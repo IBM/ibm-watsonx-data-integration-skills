@@ -1,0 +1,17 @@
+{
+  "name": "ibm-agentic-data-integration-sdk",
+  "owner": {
+    "name": "IBM"
+  },
+  "plugins": [
+    {
+      "name": "ibm-agentic-data-integration-sdk",
+      "source": ".",
+      "description": "IBM watsonx Data Integration — SDK skills for local Python development using the watsonx.data integration package.",
+      "version": "0.1.0",
+      "author": {
+        "name": "IBM"
+      }
+    }
+  ]
+}
