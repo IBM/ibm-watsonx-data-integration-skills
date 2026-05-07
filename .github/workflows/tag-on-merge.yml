@@ -1,0 +1,94 @@
+# GitHub Repository Settings Requirements:
+# 1. Settings → General → Pull Requests → "Automatically delete head branches" must be DISABLED
+#    - This workflow needs the source branch to exist to fetch its tags
+#    - The workflow will handle branch cleanup after tagging
+# 2. Actions → General → Workflow permissions → "Read and write permissions" must be enabled
+#    - Required for the workflow to push tags and delete branches
+
+name: Tag Main Branch on PR Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+jobs:
+  tag-release:
+    # Only run if PR was merged (not just closed)
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      
+      - name: Fetch source branch
+        run: |
+          git fetch origin ${{ github.event.pull_request.head.ref }}
+      
+      - name: Get tag from source branch
+        id: get_tag
+        run: |
+          SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
+          SOURCE_SHA="${{ github.event.pull_request.head.sha }}"
+          
+          echo "Source branch: $SOURCE_BRANCH"
+          echo "Source SHA: $SOURCE_SHA"
+          
+          # Get tag pointing to the source branch commit
+          TAG=$(git tag --points-at "$SOURCE_SHA" | head -1)
+          
+          if [ -z "$TAG" ]; then
+            echo "No tag found on source branch commit, skipping"
+            echo "tag=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Found tag: $TAG"
+      
+      - name: Create and push tag to main
+        if: steps.get_tag.outputs.tag != ''
+        env:
+          TAG: ${{ steps.get_tag.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Check if tag already exists on main
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "WARNING: Tag $TAG already exists, deleting old tag"
+            git tag -d "$TAG"
+            git push origin ":refs/tags/$TAG" || true
+          fi
+          
+          # Create signed tag on the merge commit (current HEAD on main)
+          git tag -s -a "$TAG" -m "Release $TAG
+
+Signed-off-by: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          git push origin "$TAG"
+          
+          echo "Tagged main branch with $TAG"
+      
+      - name: Comment on PR
+        if: steps.get_tag.outputs.tag != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = '${{ steps.get_tag.outputs.tag }}';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: `Main branch has been tagged with \`${tag}\``
+            });
+      
+      - name: Delete source branch
+        run: |
+          SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
+          echo "Deleting source branch: $SOURCE_BRANCH"
+          git push origin --delete "$SOURCE_BRANCH" || echo "Branch already deleted or could not be deleted"
