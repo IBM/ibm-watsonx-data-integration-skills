@@ -1,4 +1,4 @@
-# ibm-watsonx-data-integration-skills
+# IBM watsonx.data integration skills
 Data integration skills enable external AI agents to interact with IBM watsonx.data integration using natural language.
 
 You can add these skills to an external AI agent, such as Claude Desktop or IBM Bob, to use the following watsonx.data integration capabilities:

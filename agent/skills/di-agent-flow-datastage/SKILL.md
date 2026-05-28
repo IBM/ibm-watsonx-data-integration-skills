@@ -1,44 +1,40 @@
 ---
 name: di-agent-flow-datastage
-description: Create or edit DataStage batch flows via platform MCP tools. Use when the user wants to create a new flow that di-agent-flow-pyflow can't express, edit or extend an existing flow, or optimize a specific flow's configuration. DataStage only — for StreamSets flows use the di-agent-flow-pyflow skill.
+description: "Reference for creating DataStage (batch) flows with the watsonx.data integration SDK. The SDK is verbose and permits exhaustive stage and property access: use it to author flows pyflow's compact DSL can't express, and to edit or optimize existing DataStage flows, including ones bootstrapped with pyflow."
 ---
 
 # Create / Edit DataStage Flows
 
-DataStage batch flows are authored by writing SDK-style flow code and submitting it via the platform MCP tool. The tool handles project context, auth, and persistence — no boilerplate required.
+DataStage batch flows are authored by writing SDK-style Python code and submitting
+via `create_or_update_datastage_flow`. Auth, project context, persistence, and
+compilation are handled automatically.
 
-For new flows expressible as simple source → transform → sink pipelines, prefer the `di-agent-flow-pyflow` skill. Use this skill when pyflow can't express the flow (complex stage graphs, native stage properties, editing existing flows).
+## Where to look
 
-## Invariants
+- **SDK conventions** (method signatures, stage config, link schemas, column types, connection binding, key rules, full example) → [references/sdk-conventions.md](references/sdk-conventions.md)
+- **Stage selection** → `recommend_datastage_stages(subutterances=[...])`
+- **Stage property names and accepted values** → `datastage_property_lookup(requests=[{"stage": "..."}])`
+- **Per-stage deep-dive** → `di-agent-knowledge-engine-datastage` skill [stages/](../di-agent-knowledge-engine-datastage/stages/)
+- **Flow optimization** → `di-agent-knowledge-engine-datastage` skill [optimization/overview.md](../di-agent-knowledge-engine-datastage/optimization/overview.md)
+- **Custom stages (C/C++, Java)** → [BuildopStage.md](../di-agent-knowledge-engine-datastage/stages/BuildopStage.md), [JavaIntegrationStage.md](../di-agent-knowledge-engine-datastage/stages/JavaIntegrationStage.md)
 
-1. **Read the SDK spec first.** Call `get_datastage_sdk_spec()` before writing any flow code.
-2. **Fetch existing flows by `flow_id`, never by name** — fetching by name returns incomplete stage data.
-3. **Never guess stage types or property values.** Look them up: `datastage_property_lookup(requests=[{"stage": "..."}])` or the `di-common-engine-datastage` skill's [stages/](../di-common-engine-datastage/stages/).
-4. **Validate before running.** `flow.compile()`.
-5. **Bundle all changes into one submission** — not successive ones.
+## Versioning
 
-## Workflows
+Use `duplicate_asset(asset_id=..., asset_type="datastage_flow", project_id=...)` as a safety net before making changes that could break a flow.
 
-**Edit an existing flow:**
-1. Retrieve the flow's SDK code
-2. Modify it
-3. Submit with overwrite enabled
-4. (optional) Run and poll
+**Editing an existing flow:** Before modifying, duplicate the flow as a backup with a timestamped name (`"{name} [backup YYYY-MM-DD]"`). Work on the original — the backup is your rollback point. Keep at most one backup per flow to avoid clutter (delete old ones via `delete_asset`).
 
-**Create a new flow:**
-1. Read the SDK spec
-2. Look up stage properties as needed (batch multiple stages per call)
-3. Submit without overwrite
-4. (optional) Run and poll
+**Iterating on a new flow:** After a successful `create_or_update_datastage_flow`, if the user requests further edits, snapshot the working state first via `duplicate_asset`. This way you can restore if subsequent changes break it.
 
-Name collisions on submit-without-overwrite error out. Ask the user to overwrite or rename — **do not retry automatically**.
+**Restoration:** Not a single tool call. Delete the broken flow, then duplicate the backup back to the original name — or simply point the user to the backup.
 
-Poll tools finish on their own — call once, not in a loop.
+**Caveats:** Duplicating a flow does NOT duplicate any jobs or schedules attached to it. Be cautious when editing flows with active job runs. Cross-flow references (e.g. sub-flows) are not preserved in the backup.
 
-## References
+## Guardrails
 
-- Workflow detail, edit patterns → [references/editing-flows.md](references/editing-flows.md)
-- Stage configuration, link schemas, column types, job lifecycle → [references/batch-datastage.md](references/batch-datastage.md) and [references/sdk-conventions.md](references/sdk-conventions.md)
-- Per-stage property details → `di-common-engine-datastage` skill [stages/](../di-common-engine-datastage/stages/)
-- Custom stages → [BuildopStage.md](../di-common-engine-datastage/stages/BuildopStage.md) (C/C++), [JavaIntegrationStage.md](../di-common-engine-datastage/stages/JavaIntegrationStage.md) (Java)
-- Flow optimization → `di-common-engine-datastage` skill [optimization/overview.md](../di-common-engine-datastage/optimization/overview.md)
+- **Fetch flows by `flow_id`**, never by name — name returns incomplete stage data
+- **Never guess stage types, property names, or enum values** — use `recommend_datastage_stages` / `datastage_property_lookup`
+- **Bundle all changes into a single submission** — successive submissions overwrite each other
+- **Name collisions on create** — ask user to confirm overwrite or rename, never retry automatically
+- **After a successful create/update**, surface the returned `flow_link` from the tool result as a clickable link so the user can open the flow in the UI
+- **Stage property names in prose** — use the `User friendly name` from `datastage_property_lookup` (e.g. "Number of rows (per partition)"), not the internal identifier (`nrecs`); show the internal name only in code blocks or when the user asks for the SDK property

@@ -1,6 +1,6 @@
 ---
 name: di-agent-knowledge-engine-streamsets
-description: Reference for StreamSets Data Collector engines and environments — environment configuration, engine deployment, job execution, communication methods (tunneling/direct), high availability, failover, monitoring, and resource management. Use for StreamSets infrastructure and engine operations questions.
+description: "Reference for StreamSets Data Collector engines and StreamSets environments — StreamSets environment configuration, StreamSets engine deployment (Docker/Podman), StreamSets job execution, StreamSets engine communication methods (tunneling/direct), StreamSets high availability and failover, StreamSets monitoring and resource management. Use ONLY when the user explicitly mentions StreamSets, Data Collector, or a StreamSets-specific concern."
 ---
 
 # StreamSets Engine
