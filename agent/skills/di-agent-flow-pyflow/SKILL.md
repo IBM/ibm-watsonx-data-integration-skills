@@ -1,6 +1,6 @@
 ---
 name: di-agent-flow-pyflow
-description: Build data flows using the Pyflow Python DSL — preferred approach for building DataStage and StreamSets data integration flows.
+description: "Complete API spec for pyflow, IBM's LLM-only Python DSL for authoring new batch or streaming flows on DataStage or StreamSets. The compact surface is built for high LLM authoring reliability — bootstrap here first, and fall back to the verbose engine-specific SDK only when pyflow cannot express a needed feature."
 ---
 
 # Pyflow API Spec
@@ -9,7 +9,7 @@ The runtime provides `q`; do not import or instantiate. Every flow:
 
 1. Declares sources with `q.source()` -- list only referenced columns, using exact names and types from asset metadata.
 2. Calls `q.name("<snake_case_name>")` exactly once.
-3. Ends with exactly one sink: `q.output(frame)`, or `q.write(frame, "symbol")` when writing to a destination asset.
+3. Ends with exactly one sink: `q.output(frame)`, or `q.write(frame, "symbol", operation="insert" | "overwrite" | "update")` when writing to a destination asset.
 
 Code must contain no imports or `print()`.
 
@@ -21,11 +21,11 @@ The caller passes the target engine to `create_pyflow(engine=...)`; do not decla
 |---|---|---|
 | `q.source()` | any count | exactly one |
 | `q.output()` / `q.write()` | yes | yes |
-| `.filter()` | yes | yes |
+| `.filter()`, `.sort()` | yes | yes |
 | `.lookup()` | no | yes |
 | `.tumble()` / `.slide().agg()` | no | at most one |
-| `.select()`, `.with_columns()` | yes | no |
-| `.sort()`, `.head()` / `.fetch()`, `.unique()` | yes | no |
+| `.select()` / `.with_columns()` | yes | yes |
+| `.head()` / `.fetch()`, `.unique()` | yes | no |
 | `.union()`, `.intersect()` | yes | no |
 | `.group_by().agg()` | yes | no |
 | `.join()`, `.cross()` | yes | no |
@@ -36,7 +36,7 @@ StreamSets flows must be a single linear chain:
 q.source() -> [.filter() | .lookup()]* -> [.tumble()/.slide().agg()]? -> q.output() | q.write()
 ```
 
-StreamSets `.filter()` expressions are limited to column refs, literals/casts, comparisons, `&`/`|`/`~`, and `.str` predicates. StreamSets windowed-agg measures support only `.sum()`.
+StreamSets windowed-agg measures support only `.sum()`.
 
 ## Symbols And Bindings
 
@@ -60,7 +60,7 @@ q.source(symbol, {"col": "type", ...}) -> Frame   # dict form; supports names wi
 q.source(symbol, col="type", ...) -> Frame         # kwargs form; identifier-safe names
 q.name(name)                              # flow name; snake_case; exactly once
 q.output(frame)                           # register final output
-q.write(frame, symbol)                    # write final output to destination
+q.write(frame, symbol, operation="insert")  # write final output to destination
 q.col(name) -> Expr                       # column reference
 q.count_star() -> Expr                    # count-all `[datastage]`; use in .select() or .group_by().agg()
 q.cast(value, type) -> Expr               # typed literal or expr cast; null: q.cast(None, "f64")
@@ -70,6 +70,21 @@ q.date_diff(d1, d2) -> Expr               # day difference as i64
 q.strptime_time(expr, fmt) -> Expr        # string -> temporal; fmt is a strftime-style format
 q.strftime(expr, fmt, tz?) -> Expr        # temporal -> string; tz is an IANA name
 ```
+
+### Write Operations
+
+`q.write()` supports row-level destination operations:
+
+```python
+q.write(frame, "target")                         # same as operation="insert"
+q.write(frame, "target", operation="insert")     # append rows
+q.write(frame, "target", operation="overwrite")  # replace the table's contents
+q.write(frame, "target", operation="update")     # update existing rows
+```
+
+- `operation`: `"insert"` | `"overwrite"` | `"update"`.
+- `"overwrite"` truncates the table before writing, so re-running a flow is idempotent. Use it when the destination should hold exactly this run's output (datastage only).
+- Unsupported operations such as `"upsert"` are rejected; do not approximate them with insert or update.
 
 ## Expression Methods
 
@@ -87,7 +102,9 @@ Operators return `Expr`, not Python bools. Use `&`/`|`/`~`, never `and`/`or`/`no
 .sum()                                    # aggregate; both engines
 .mean()/.avg() .count() .min() .max()     # aggregates; `[datastage]` only
 .is_in(v1, v2, ...)                       # or .is_in([v1, v2])
+.is_null() .is_not_null()                 # null checks -> boolean;
 .asc() .desc()                            # sort direction only
+.nulls_first() .nulls_last()              # nulls position in sort
 ```
 
 ### Conditional
@@ -108,13 +125,16 @@ q.when(c1).then(v1).when(c2).then(v2).otherwise(else_val)   # multi-branch
 .str.substring(start_1based, length?)
 ```
 
+**Best Practice:** Apply `.str.trim()` to string columns in final output results to remove leading and trailing whitespace, unless there is a clear requirement to preserve spacing or the user explicitly requests otherwise. Clean, trimmed final output is preferred by default.
+
 ## Frame Methods
 
 ```python
 .filter(expr) -> Frame                    # boolean expr; no aggregates inside
 .select(*exprs) -> Frame                  # bare strings become col(name); mixing plain refs with aggregates triggers implicit group-by
 .with_columns(*exprs) -> Frame            # keep all input cols + add/replace; no aggregates inside
-.sort(*col_refs) -> Frame                 # column refs only; bare strings sort asc
+.sort(*col_refs) -> Frame                 # column refs only; bare strings sort asc; use .asc()/.desc()/.nulls_first()/.nulls_last()
+                                          # nulls position defaults to nulls_first when not specified
 .head(count) -> Frame                     # use .fetch(count, offset) when offset needed
 .unique(*subset) -> Frame                 # empty subset dedupes on all columns; output keeps every column
 .union(other) -> Frame                    # set-semantics dedup
@@ -234,3 +254,4 @@ q.output(
     .agg(q.col("amount").sum().alias("revenue"))
 )
 ```
+
