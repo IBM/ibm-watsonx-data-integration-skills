@@ -50,10 +50,18 @@ Follow these steps to generate a Substrait plan from a natural language request.
 
 ### 1. Fetch Few-Shot Examples
 
-Call `get_substrait_dsl_examples` with the user's query to get relevant DSL examples:
+Call `get_substrait_dsl_examples` to retrieve relevant DSL examples.
+
+**CRITICAL RULE — the `user_request` parameter MUST be the user's ENTIRE original message, copied verbatim, with no modifications whatsoever.** The retrieval system uses sentence-level semantic embeddings that require the full context to match correctly. Passing keywords or summaries returns irrelevant examples and causes downstream failures.
+
 ```
-get_substrait_dsl_examples(query="<user_query>", collection="draft_generation", n=5)
+get_substrait_dsl_examples(user_request="<FULL VERBATIM USER MESSAGE — EVERY WORD, NO SUMMARIZATION>", collection="draft_generation", n=5)
 ```
+
+WRONG (keywords/summary): `user_request="join two tables aggregate count sum divide cast round NPS score"`
+CORRECT (full verbatim text): `user_request="Given a fct_reviews table (listing_id, review_date, reviewer_name, review_text, review_sentiment) and a dim_listings table (listing_id, listing_name, minimum_nights, host_id, room_type, price, created_at, updated_at), produce a per-listing NPS aggregation result set. For each listing: listing_id, listing_name, room_type, nps_total (overall NPS in [-100, 100] across all reviews of that listing, computed as (positive - negative) / total * 100, rounded to 0 decimals), reviews_total (total review count). Inner join on listing_id; only include listings that have at least one review."`
+
+The `user_request` string length should match the user's message length. If your `user_request` is shorter than the user's message, you are doing it wrong.
 
 Study the returned examples to understand the syntax of the DSL.  Never use the few-shot examples to derive any input schema even if seemingly more appropriate — that must come from the project assets as described in the next step.
 
@@ -154,6 +162,7 @@ Present the user with:
 
 ## Important Notes
 
+- **`get_substrait_dsl_examples` user_request parameter**: You MUST pass the user's complete unmodified message as the `user_request` value. Do not extract keywords, summarize, or shorten it in any way. Also always pass `collection="draft_generation"` and `n=5`. Violation of this rule produces irrelevant examples.
 - **You must call `get_substrait_dsl_spec` and study the spec before generating any DSL code.** It is the authoritative reference for all constructs, expressions, types, and scoping rules — do not only rely on few-shot examples or prior knowledge for syntax details
 - `Select` keeps ONLY listed columns; `Project` keeps ALL columns plus new ones
 - Aggregation measures must NOT be wrapped in `cast()`

@@ -1,0 +1,690 @@
+{
+  "AddressVerification2": {
+    "map_name": "address_verification",
+    "label": "Address Verification"
+  },
+  "AmazonS3PX": {
+    "map_name": "amazons3",
+    "label": "Amazon S3"
+  },
+  "AzureDatalakePX": {
+    "map_name": "azuredatalake",
+    "label": "Microsoft Azure Data Lake Storage"
+  },
+  "CTransformerStage": {
+    "map_name": "transformer",
+    "label": "Transformer"
+  },
+  "CassandraConnectorPX": {
+    "map_name": "cassandra_datastage",
+    "label": "Apache Cassandra for DataStage"
+  },
+  "DB2ConnectorPX": {
+    "map_name": "db2fordatastage",
+    "label": "IBM Db2 for DataStage"
+  },
+  "GoogleCloudStoragePX": {
+    "map_name": "google_cloud_storage",
+    "label": "Google Cloud Storage"
+  },
+  "GooglePubSubPX": {
+    "map_name": "google_pub_sub",
+    "label": "Google Cloud Pub/Sub"
+  },
+  "HBaseConnectorPX": {
+    "map_name": "apache_hbase",
+    "label": "Apache HBase"
+  },
+  "HiveConnectorPX": {
+    "map_name": "apache_hive",
+    "label": "Apache Hive"
+  },
+  "IADataRule": {
+    "map_name": "data_rules",
+    "label": "Data Rules"
+  },
+  "Investigate": {
+    "map_name": "investigate",
+    "label": "Investigate"
+  },
+  "JDBCConnectorPX": {
+    "map_name": "jdbc",
+    "label": "Generic JDBC"
+  },
+  "JavaStagePX": {
+    "map_name": "java_integration",
+    "label": "Java Integration"
+  },
+  "KafkaConnectorPX": {
+    "map_name": "apache_kafka",
+    "label": "Apache Kafka"
+  },
+  "MatchFrequency": {
+    "map_name": "match_frequency",
+    "label": "Match Frequency"
+  },
+  "NetezzaConnectorPX": {
+    "map_name": "netezza_optimized",
+    "label": "IBM Netezza Performance Server for DataStage"
+  },
+  "ODBCConnectorPX": {
+    "map_name": "odbc",
+    "label": "ODBC"
+  },
+  "OracleConnectorPX": {
+    "map_name": "oracle_datastage",
+    "label": "Oracle Database for DataStage"
+  },
+  "PxAggregator": {
+    "map_name": "aggregator",
+    "label": "Aggregator"
+  },
+  "PxBLM": {
+    "map_name": "bloom_filter",
+    "label": "Bloom Filter"
+  },
+  "PxBapi": {
+    "map_name": "sapbapi",
+    "label": "SAP BAPI"
+  },
+  "PxCFF": {
+    "map_name": "complex_flat_file",
+    "label": "Complex Flat File"
+  },
+  "PxChangeApply": {
+    "map_name": "change_apply",
+    "label": "Change Apply"
+  },
+  "PxChangeCapture": {
+    "map_name": "change_capture",
+    "label": "Change Capture"
+  },
+  "PxChecksum": {
+    "map_name": "checksum",
+    "label": "Checksum"
+  },
+  "PxColumnExport": {
+    "map_name": "column_export",
+    "label": "Column Export"
+  },
+  "PxColumnGenerator": {
+    "map_name": "column_generator",
+    "label": "Column Generator"
+  },
+  "PxColumnImport": {
+    "map_name": "column_import",
+    "label": "Column Import"
+  },
+  "PxCombineRecords": {
+    "map_name": "combine_records",
+    "label": "Combine Records"
+  },
+  "PxCompare": {
+    "map_name": "compare",
+    "label": "Compare"
+  },
+  "PxCompress": {
+    "map_name": "compress",
+    "label": "Compress"
+  },
+  "PxCopy": {
+    "map_name": "copy",
+    "label": "Copy"
+  },
+  "PxDataSet": {
+    "map_name": "dataset",
+    "label": "Data set"
+  },
+  "PxDecode": {
+    "map_name": "decode",
+    "label": "Decode"
+  },
+  "PxDifference": {
+    "map_name": "difference",
+    "label": "Difference"
+  },
+  "PxEncode": {
+    "map_name": "encode",
+    "label": "Encode"
+  },
+  "PxExpand": {
+    "map_name": "expand",
+    "label": "Expand"
+  },
+  "PxExternalFilter": {
+    "map_name": "external_filter",
+    "label": "External Filter"
+  },
+  "PxExternalSource": {
+    "map_name": "external_source",
+    "label": "External Source"
+  },
+  "PxExternalTarget": {
+    "map_name": "external_target",
+    "label": "External Target"
+  },
+  "PxFileSet": {
+    "map_name": "fileset",
+    "label": "File set"
+  },
+  "PxFilter": {
+    "map_name": "filter",
+    "label": "Filter"
+  },
+  "PxFunnel": {
+    "map_name": "funnel",
+    "label": "Funnel"
+  },
+  "PxGeneric": {
+    "map_name": "generic",
+    "label": "Generic"
+  },
+  "PxHead": {
+    "map_name": "head",
+    "label": "Head"
+  },
+  "PxJoin": {
+    "map_name": "join",
+    "label": "Join"
+  },
+  "PxLookup": {
+    "map_name": "lookup",
+    "label": "Lookup"
+  },
+  "PxLookupFileSet": {
+    "map_name": "lookupfileset",
+    "label": "Lookup file set"
+  },
+  "PxMakeSubRec": {
+    "map_name": "make_subrecord",
+    "label": "Make Subrecord"
+  },
+  "PxMakeVect": {
+    "map_name": "make_vector",
+    "label": "Make Vector"
+  },
+  "PxMerge": {
+    "map_name": "merge",
+    "label": "Merge"
+  },
+  "PxModify": {
+    "map_name": "modify",
+    "label": "Modify"
+  },
+  "PxPeek": {
+    "map_name": "peek",
+    "label": "Peek"
+  },
+  "PxPivot": {
+    "map_name": "pivot",
+    "label": "Pivot Enterprise"
+  },
+  "PxPromoteSubRec": {
+    "map_name": "promote_subrecord",
+    "label": "Promote Subrecord"
+  },
+  "PxRemDup": {
+    "map_name": "remove_duplicates",
+    "label": "Remove Duplicates"
+  },
+  "PxRest": {
+    "map_name": "rest",
+    "label": "Rest"
+  },
+  "PxRowGenerator": {
+    "map_name": "row_generator",
+    "label": "Row Generator"
+  },
+  "PxSCD": {
+    "map_name": "slowly_changing_dimension",
+    "label": "Slowly Changing Dimension"
+  },
+  "PxSample": {
+    "map_name": "sample",
+    "label": "Sample"
+  },
+  "PxSequentialFile": {
+    "map_name": "sequentialfile",
+    "label": "Sequential file"
+  },
+  "PxSort": {
+    "map_name": "sort",
+    "label": "Sort"
+  },
+  "PxSplitSubRec": {
+    "map_name": "split_subrecord",
+    "label": "Split Subrecord"
+  },
+  "PxSplitVect": {
+    "map_name": "split_vector",
+    "label": "Split Vector"
+  },
+  "PxSurrogateKeyGeneratorN": {
+    "map_name": "surrogate_key_generator",
+    "label": "Surrogate Key Generator"
+  },
+  "PxSwitch": {
+    "map_name": "switch",
+    "label": "Switch"
+  },
+  "PxTail": {
+    "map_name": "tail",
+    "label": "Tail"
+  },
+  "PxWaveGenerator": {
+    "map_name": "wave_generator",
+    "label": "Wave Generator"
+  },
+  "PxWriteRangeMap": {
+    "map_name": "write_range_map",
+    "label": "Write Range Map"
+  },
+  "PxXMLInput": {
+    "map_name": "xml_input",
+    "label": "XML Input"
+  },
+  "PxXMLOutput": {
+    "map_name": "xml_output",
+    "label": "XML Output"
+  },
+  "RedshiftPX": {
+    "map_name": "amazon_redshift",
+    "label": "Amazon Redshift"
+  },
+  "ReferenceMatch": {
+    "map_name": "two_source_match",
+    "label": "Two-source Match"
+  },
+  "SALESFORCEJCConnectorPX": {
+    "map_name": "salesforceapi",
+    "label": "Salesforce API for DataStage"
+  },
+  "SnowflakeConnectorPX": {
+    "map_name": "snowflake",
+    "label": "Snowflake"
+  },
+  "Standardize": {
+    "map_name": "standardize",
+    "label": "Standardize"
+  },
+  "Survive": {
+    "map_name": "survive",
+    "label": "Survive"
+  },
+  "TeradataConnectorPX": {
+    "map_name": "teradata_datastage",
+    "label": "Teradata database for DataStage"
+  },
+  "UnduplicateMatch": {
+    "map_name": "one_source_match",
+    "label": "One-source Match"
+  },
+  "WSTransformerPX": {
+    "map_name": "web_service",
+    "label": "Web Service"
+  },
+  "WebSphereMQConnectorPX": {
+    "map_name": "ibm_mq",
+    "label": "IBM MQ"
+  },
+  "XMLStagePX": {
+    "map_name": "hierarchical_data",
+    "label": "Hierarchical Data"
+  },
+  "amazons3": {
+    "map_name": "amazons3",
+    "label": "Amazon S3"
+  },
+  "apachekafka": {
+    "map_name": "apache_kafka",
+    "label": "Apache Kafka"
+  },
+  "azureblobstorage": {
+    "map_name": "azure_blob_storage",
+    "label": "Microsoft Azure Blob Storage"
+  },
+  "azuredatalake": {
+    "map_name": "azuredatalake",
+    "label": "Microsoft Azure Data Lake Storage"
+  },
+  "azurefilestorage": {
+    "map_name": "azure_file_storage",
+    "label": "Microsoft Azure File Storage"
+  },
+  "azuresql": {
+    "map_name": "azuresql",
+    "label": "Microsoft Azure SQL Database"
+  },
+  "azuresynapse": {
+    "map_name": "azuresynapse",
+    "label": "Microsoft Azure Synapse Analytics"
+  },
+  "bigquery": {
+    "map_name": "bigquery",
+    "label": "Google BigQuery"
+  },
+  "bigqueryPX": {
+    "map_name": "bigquery",
+    "label": "Google BigQuery"
+  },
+  "bigsql": {
+    "map_name": "bigsql",
+    "label": "IBM Db2 Big SQL"
+  },
+  "box": {
+    "map_name": "box",
+    "label": "Box"
+  },
+  "cassandra": {
+    "map_name": "cassandra",
+    "label": "Apache Cassandra"
+  },
+  "cassandra-datastage": {
+    "map_name": "cassandra_datastage",
+    "label": "Apache Cassandra for DataStage"
+  },
+  "cloudobjectstorage": {
+    "map_name": "cloud_object_storage",
+    "label": "IBM Cloud Object Storage"
+  },
+  "cloudobjectstoragePX": {
+    "map_name": "cloud_object_storage",
+    "label": "IBM Cloud Object Storage"
+  },
+  "cognos-analytics": {
+    "map_name": "cognos_analytics",
+    "label": "IBM Cognos Analytics"
+  },
+  "cosmos": {
+    "map_name": "azure_cosmos",
+    "label": "Microsoft Azure Cosmos DB"
+  },
+  "dashdb": {
+    "map_name": "db2warehouse",
+    "label": "IBM Db2 Warehouse"
+  },
+  "databricks": {
+    "map_name": "azure_databricks",
+    "label": "Microsoft Azure Databricks"
+  },
+  "datastax": {
+    "map_name": "datastax",
+    "label": "DataStax Enterprise"
+  },
+  "db2": {
+    "map_name": "db2",
+    "label": "IBM Db2"
+  },
+  "db2-datastage": {
+    "map_name": "db2fordatastage",
+    "label": "IBM Db2 for DataStage"
+  },
+  "db2cloud": {
+    "map_name": "db2cloud",
+    "label": "IBM Db2 on Cloud"
+  },
+  "db2iseries": {
+    "map_name": "db2iseries",
+    "label": "IBM Db2 for i"
+  },
+  "db2zos": {
+    "map_name": "db2zos",
+    "label": "IBM Db2 for z/OS"
+  },
+  "denodo": {
+    "map_name": "denodo",
+    "label": "Denodo"
+  },
+  "derby": {
+    "map_name": "derby",
+    "label": "Apache Derby"
+  },
+  "dremio": {
+    "map_name": "dremio",
+    "label": "Dremio"
+  },
+  "dropbox": {
+    "map_name": "dropbox",
+    "label": "Dropbox"
+  },
+  "dv": {
+    "map_name": "dv",
+    "label": "IBM Data Virtualization"
+  },
+  "dvm": {
+    "map_name": "dvm",
+    "label": "IBM Data Virtualization Manager for z/OS"
+  },
+  "elasticsearch": {
+    "map_name": "elasticsearch",
+    "label": "Elasticsearch"
+  },
+  "exasol": {
+    "map_name": "exasol",
+    "label": "Exasol"
+  },
+  "ftp": {
+    "map_name": "ftp",
+    "label": "FTP"
+  },
+  "genericjdbc": {
+    "map_name": "jdbc",
+    "label": "Generic JDBC"
+  },
+  "generics3": {
+    "map_name": "generics3",
+    "label": "Generic S3"
+  },
+  "googlecloudstorage": {
+    "map_name": "google_cloud_storage",
+    "label": "Google Cloud Storage"
+  },
+  "googlepubsub": {
+    "map_name": "google_pub_sub",
+    "label": "Google Cloud Pub/Sub"
+  },
+  "greenplum": {
+    "map_name": "greenplum",
+    "label": "Greenplum"
+  },
+  "hbase-datastage": {
+    "map_name": "apache_hbase",
+    "label": "Apache HBase"
+  },
+  "hdfs-apache": {
+    "map_name": "hdfs_apache",
+    "label": "Apache HDFS"
+  },
+  "hive": {
+    "map_name": "apache_hive",
+    "label": "Apache Hive"
+  },
+  "http": {
+    "map_name": "http",
+    "label": "HTTP"
+  },
+  "impala": {
+    "map_name": "impala",
+    "label": "Apache Impala"
+  },
+  "informix": {
+    "map_name": "informix",
+    "label": "IBM Informix"
+  },
+  "lakehouse": {
+    "map_name": "watsonx_data",
+    "label": "IBM watsonx.data Presto"
+  },
+  "looker": {
+    "map_name": "google_looker",
+    "label": "Google Looker"
+  },
+  "mariadb": {
+    "map_name": "mariadb",
+    "label": "MariaDB"
+  },
+  "match360": {
+    "map_name": "match360",
+    "label": "IBM Match 360"
+  },
+  "minio": {
+    "map_name": "minio",
+    "label": "MinIO"
+  },
+  "mongodb": {
+    "map_name": "mongodb",
+    "label": "MongoDB"
+  },
+  "mongodb-ibmcloud": {
+    "map_name": "mongodb_ibmcloud",
+    "label": "IBM Cloud Databases for MongoDB"
+  },
+  "mysql": {
+    "map_name": "mysql",
+    "label": "MySQL"
+  },
+  "mysql-amazon": {
+    "map_name": "mysql_amazon",
+    "label": "Amazon RDS for MySQL"
+  },
+  "mysql-compose": {
+    "map_name": "mysql_compose",
+    "label": "IBM Cloud Databases for MySQL"
+  },
+  "mysql-ibmcloud": {
+    "map_name": "mysql_compose",
+    "label": "IBM Cloud Databases for MySQL"
+  },
+  "netezza": {
+    "map_name": "netezza",
+    "label": "IBM Netezza Performance Server"
+  },
+  "netezza-datastage": {
+    "map_name": "netezza_optimized",
+    "label": "IBM Netezza Performance Server for DataStage"
+  },
+  "odbc-datastage": {
+    "map_name": "odbc",
+    "label": "ODBC"
+  },
+  "oracle": {
+    "map_name": "oracle",
+    "label": "Oracle"
+  },
+  "oracle-amazon": {
+    "map_name": "amazonrds_oracle",
+    "label": "Amazon RDS for Oracle"
+  },
+  "oracle-datastage": {
+    "map_name": "oracle_datastage",
+    "label": "Oracle Database for DataStage"
+  },
+  "postgresql": {
+    "map_name": "postgresql",
+    "label": "PostgreSQL"
+  },
+  "postgresql-amazon": {
+    "map_name": "amazon_postgresql",
+    "label": "Amazon RDS for PostgreSQL"
+  },
+  "postgresql-azure": {
+    "map_name": "azure_postgresql",
+    "label": "Azure PostgreSQL"
+  },
+  "postgresql-ibmcloud": {
+    "map_name": "postgresql_ibmcloud",
+    "label": "IBM Cloud Databases for PostgreSQL"
+  },
+  "presto": {
+    "map_name": "presto",
+    "label": "Presto"
+  },
+  "qsaviop": {
+    "map_name": "address_verification",
+    "label": "Address Verification"
+  },
+  "redshift": {
+    "map_name": "amazon_redshift",
+    "label": "Amazon Redshift"
+  },
+  "salesforce": {
+    "map_name": "salesforce",
+    "label": "Salesforce.com"
+  },
+  "salesforce-datastage": {
+    "map_name": "salesforceapi",
+    "label": "Salesforce API for DataStage"
+  },
+  "sapbapi": {
+    "map_name": "sapbapi",
+    "label": "SAP BAPI"
+  },
+  "sapbulkextract": {
+    "map_name": "sapbulkextract",
+    "label": "SAP Bulk Extract"
+  },
+  "sapdeltaextract": {
+    "map_name": "sapdeltaextract",
+    "label": "SAP Delta Extract"
+  },
+  "saphana": {
+    "map_name": "saphana",
+    "label": "SAP HANA"
+  },
+  "sapidoc": {
+    "map_name": "sapidoc",
+    "label": "SAP IDoc"
+  },
+  "sapodata": {
+    "map_name": "sapodata",
+    "label": "SAP OData"
+  },
+  "singlestore": {
+    "map_name": "singlestore",
+    "label": "SingleStoreDB"
+  },
+  "snowflake": {
+    "map_name": "snowflake",
+    "label": "Snowflake"
+  },
+  "sqlserver": {
+    "map_name": "sqlserver",
+    "label": "Microsoft SQL Server"
+  },
+  "sybase": {
+    "map_name": "sybase",
+    "label": "SAP ASE"
+  },
+  "sybaseiq": {
+    "map_name": "sapiq",
+    "label": "SAP IQ"
+  },
+  "tableau": {
+    "map_name": "tableau",
+    "label": "Tableau"
+  },
+  "teradata": {
+    "map_name": "teradata",
+    "label": "Teradata"
+  },
+  "teradata-datastage": {
+    "map_name": "teradata_datastage",
+    "label": "Teradata database for DataStage"
+  },
+  "tm1odata": {
+    "map_name": "planning_analytics",
+    "label": "IBM Planning Analytics"
+  },
+  "vertica": {
+    "map_name": "vertica",
+    "label": "Vertica"
+  },
+  "volumes": {
+    "map_name": "storage_volume",
+    "label": "Storage volume"
+  },
+  "webspheremq-datastage": {
+    "map_name": "ibm_mq",
+    "label": "IBM MQ"
+  }
+}
