@@ -1,13 +1,40 @@
 ---
 name: di-agent-flow-pyflow
-description: "Complete API spec for pyflow, IBM's LLM-only Python DSL for authoring new batch or streaming flows on DataStage or StreamSets. The compact surface is built for high LLM authoring reliability — bootstrap here first, and fall back to the verbose engine-specific SDK only when pyflow cannot express a needed feature."
+description: "API spec for pyflow, IBM's LLM-optimized Python DSL for authoring DataStage and StreamSets flows. Its compact surface and compile-time validation offer context efficiency, fast feedback, and correctness guarantees, making it the ideal choice for writing flows from scratch and for editing — bootstrap any structural change (a new source, a join) here before precision-editing the SDK."
 ---
 
 # Pyflow API Spec
 
+## Usage Guidance
+
+Pyflow is *declarative* intent; the pyflow compiler lowers the DSL to an engine-specific *imperative* flow, producing an optimized physical plan for what you declare.
+
+**For new flows, always author with pyflow — it is the only way to create one.** The SDK surface can only update flows that already exist; there is no tool for creating a flow from SDK code. Beyond that, the compiler validates your flow and gives detailed compile-time feedback, guarantees correctness, and sets up connection metadata for you — all at a fraction of the tokens of the SDK. The result is a pyflow-native flow that round-trips cleanly for later edits.
+
+**Pyflow's value is building structure** — sources, joins, filters, and the wiring between them — the expensive, error-prone part to hand-author in the SDK. Expressions and stage properties are cheap to add in the SDK *once the structure exists*. So the editing question is never "can pyflow express the whole flow?" but "does this change touch structure?"
+
+### Editing an existing flow
+
+- **Adds or alters structure** (a new source, a join, a different shape) -> bootstrap that structure in pyflow, then precision-edit anything pyflow can't express — an expression, a property, even an extra custom / Buildop / Java stage — onto the generated SDK. Pyflow wires the backbone reliably; you splice the rest in after.
+- **Only expressions or properties on existing structure**, no new wiring -> edit the retrieved SDK in place.
+- **The core shape has no faithful pyflow form**, so a bootstrap would yield a scaffold you'd have to *rewire* rather than add to -> bootstrap the closest shape pyflow can produce, then reshape the generated SDK via `update_datastage_flow`. A missing stage alone never qualifies as "no pyflow form", since stages splice in after (above).
+
+**Do not abandon pyflow because one function or stage isn't supported.** A flow that needs, say, a regex extraction pyflow lacks still starts in pyflow: bootstrap the sources, filter, and join, then splice the missing piece into the generated SDK. Hand-authoring a new join or source from scratch is the SDK's least reliable path — never do it when pyflow can scaffold it.
+
+### Recommended Workflow
+
+1. Read the existing SDK — capture anything you must preserve (an exact expression, a stage's settings).
+2. Bootstrap the structure in pyflow — sources, filters, joins, wiring.
+3. Read the generated SDK.
+4. Precision-edit it to add what pyflow couldn't express.
+
+**SDK code is verbose** — manual node linking, schema propagation, and both visible and hidden properties. Writing structure from scratch without a working reference is highly error-prone; pyflow generates it correctly wired, leaving only small, local edits.
+
+## Code Anatomy
+
 The runtime provides `q`; do not import or instantiate. Every flow:
 
-1. Declares sources with `q.source()` -- list only referenced columns, using exact names and types from asset metadata.
+1. Declares sources with `q.source()` -- list only referenced columns, using exact names and types from asset metadata. At least one column must be provided.
 2. Calls `q.name("<snake_case_name>")` exactly once.
 3. Ends with exactly one sink: `q.output(frame)`, or `q.write(frame, "symbol", operation="insert" | "overwrite" | "update")` when writing to a destination asset.
 
@@ -56,10 +83,11 @@ Python literals auto-convert: `int -> i64`, `float -> f64`, `str -> string`, `bo
 ## `q` Namespace
 
 ```python
-q.source(symbol, {"col": "type", ...}) -> Frame   # dict form; supports names with spaces/punctuation
-q.source(symbol, col="type", ...) -> Frame         # kwargs form; identifier-safe names
+q.source(symbol, {"col": "type", ...}) -> Frame   # dict form; supports names with spaces/punctuation; at least one column must be provided
+q.source(symbol, col="type", ...) -> Frame         # kwargs form; identifier-safe names; at least one column must be provided
+q.source(symbol, col="type", ..., schema_metadata={...}) -> Frame  # with schema metadata (Kafka/StreamSets)
 q.name(name)                              # flow name; snake_case; exactly once
-q.output(frame)                           # register final output
+q.output(frame, name)                     # register final output; required name for flat-file output
 q.write(frame, symbol, operation="insert")  # write final output to destination
 q.col(name) -> Expr                       # column reference
 q.count_star() -> Expr                    # count-all `[datastage]`; use in .select() or .group_by().agg()
@@ -71,9 +99,76 @@ q.strptime_time(expr, fmt) -> Expr        # string -> temporal; fmt is a strftim
 q.strftime(expr, fmt, tz?) -> Expr        # temporal -> string; tz is an IANA name
 ```
 
+### Source Schema Metadata `[streamsets]`
+
+For Kafka sources on StreamSets, optionally specify schema registry metadata:
+
+```python
+q.source(symbol, col="type", ..., schema_metadata={"subject": "...", "format": "..."})
+```
+
+**Parameters:**
+- `schema_metadata`: Optional dict with schema registry information:
+  - `"subject"`: Schema registry subject name (only used when format is AVRO; defaults to `{symbol}-value`)
+  - `"format"`: Data serialization format - `"AVRO"`, `"JSON"`, or `"PROTOBUF"` (defaults to `"AVRO"`)
+
+**Behavior:**
+- **No schema registry lookups are performed.** All values are either explicitly provided or use defaults.
+- **`schema_subject` is only used when format is AVRO.** For JSON/PROTOBUF, the subject is ignored.
+- If `schema_metadata` is not provided: format defaults to `"AVRO"`, subject defaults to `{topic}-value`
+- If only `"subject"` is provided: format defaults to `"AVRO"`, subject is used
+- If only `"format"` is provided: format is used; if AVRO, subject defaults to `{topic}-value`
+
+**Examples:**
+
+```python
+# AVRO with custom subject (subject is used)
+orders = q.source("orders",
+                  order_id="i64",
+                  amount="f64",
+                  schema_metadata={
+                      "subject": "orders-value-v2",
+                      "format": "AVRO"
+                  })
+
+# JSON format (subject is ignored even if provided)
+orders = q.source("orders",
+                  order_id="i64",
+                  amount="f64",
+                  schema_metadata={"format": "JSON"})
+
+# Subject only (format defaults to AVRO, subject is used)
+orders = q.source("orders",
+                  order_id="i64",
+                  amount="f64",
+                  schema_metadata={"subject": "orders-value-v2"})
+
+# No metadata (format defaults to AVRO, subject defaults to "orders-value")
+orders = q.source("orders", order_id="i64", amount="f64")
+```
+
+**Use Cases:**
+- Network policies prevent schema registry access during compilation
+- Custom AVRO schema subject naming that doesn't follow `{topic}-value` convention
+- Explicit control over data formats (AVRO, JSON, PROTOBUF)
+
+### Output Operations
+
+`q.output()` registers a frame as the pipeline's final output and creates a file data asset in the project that contains
+the frame's full data:
+
+```python
+q.output(frame, name="my_output")
+```
+
+The `name` parameter is required and specifies the name of the output data asset.
+
+When the flow is run, it creates or *overwrites* a CSV file asset named `{name}.csv` in the data catalog.
+Use this name to discover the asset ID, and use `read_file_data_asset` tool to retrieve the data.
+
 ### Write Operations
 
-`q.write()` supports row-level destination operations:
+`q.write()` writes to a catalog asset (connection-backed table) using a binding symbol:
 
 ```python
 q.write(frame, "target")                         # same as operation="insert"
@@ -85,6 +180,7 @@ q.write(frame, "target", operation="update")     # update existing rows
 - `operation`: `"insert"` | `"overwrite"` | `"update"`.
 - `"overwrite"` truncates the table before writing, so re-running a flow is idempotent. Use it when the destination should hold exactly this run's output (datastage only).
 - Unsupported operations such as `"upsert"` are rejected; do not approximate them with insert or update.
+- **Reading written data**: After running the flow, use the `read_connection_data_preview` tool to read data from the destination connection.
 
 ## Expression Methods
 
@@ -101,6 +197,7 @@ Operators return `Expr`, not Python bools. Use `&`/`|`/`~`, never `and`/`or`/`no
 .cast(type)                               # q.col("x").cast("i32")
 .sum()                                    # aggregate; both engines
 .mean()/.avg() .count() .min() .max()     # aggregates; `[datastage]` only
+.rank() .dense_rank() .row_number()       # window functions; `[datastage]` only; see Partitioning section
 .is_in(v1, v2, ...)                       # or .is_in([v1, v2])
 .is_null() .is_not_null()                 # null checks -> boolean;
 .asc() .desc()                            # sort direction only
@@ -139,11 +236,12 @@ q.when(c1).then(v1).when(c2).then(v2).otherwise(else_val)   # multi-branch
 .unique(*subset) -> Frame                 # empty subset dedupes on all columns; output keeps every column
 .union(other) -> Frame                    # set-semantics dedup
 .intersect(other) -> Frame
+.partition_by(*col_refs, order_by=?) -> _PartitionBuilder  # `[datastage]` only; see Partitioning section
 ```
 
 **Aggregates** may appear only in `.select()` or `.group_by().agg()`. To filter on an aggregated value, aggregate first, then `.filter(...)`.
 
-**No analytic window-over functions.** Use `.tumble()` / `.slide()` for time-windowed aggregates on StreamSets.
+**No analytic window-over functions.** Use `.tumble()` / `.slide()` for time-windowed aggregates on StreamSets. For DataStage window functions, see Partitioning section below.
 
 ### Join `[datastage]`
 
@@ -184,6 +282,49 @@ m.slide(length, group_by=?, tz=?, on=?).agg(*measures) -> Frame
 - Output columns: `[*group_by, window_start, window_end, *measure_aliases]`; `window_start` / `window_end` are `timestamp`.
 - Measures: the initial StreamSets windowing compiler supports only `.sum()`. Each measure must be `.alias()`'d; no nesting.
 
+### Partitioning `[datastage]`
+
+```python
+.partition_by(*col_refs, order_by=?) -> _PartitionBuilder
+```
+
+Partitioning configures how data is distributed and ordered for window functions like `rank()`, `dense_rank()`, and `row_number()`. Chain `.select()` after `.partition_by()` to project columns with window functions:
+
+```python
+# Rank products by sales within each category
+result = (
+    sales
+    .partition_by("category", order_by="amount")
+    .select(
+        q.col("category"),
+        q.col("product"),
+        q.col("amount"),
+        q.col("amount").rank().alias("sales_rank")
+    )
+)
+
+# Multiple partition keys and order columns
+result = (
+    sales
+    .partition_by("region", "category", order_by=[("amount", "desc"), "date"])
+    .select(
+        q.col("region"),
+        q.col("category"),
+        q.col("product"),
+        q.col("amount").row_number().alias("row_num")
+    )
+)
+```
+
+- **Partition keys**: Column names to partition by (distribute data into groups)
+- **order_by**: Optional. Column(s) to sort within each partition. Can be:
+  - Single column: `order_by="amount"`
+  - List of columns: `order_by=["amount", "date"]`
+  - List with direction tuples: `order_by=[("amount", "desc"), ("date", "asc")]`
+- **Window functions**: `.rank()`, `.dense_rank()`, `.row_number()` evaluate within partition boundaries
+- **Regular functions**: Scalar functions like `.str.upper()`, `q.strftime()`, arithmetic, etc. work normally in the same `.select()` - partitioning only affects window functions
+- **Partitioning is optional**: Window functions can be used without `.partition_by()` (operates on entire dataset as one partition), though partitioning is recommended for performance and correctness
+
 ### Group-By And Aggregates-In-Select `[datastage]`
 
 ```python
@@ -212,7 +353,8 @@ q.output(
     .select("region", q.col("amount").sum().alias("revenue"), q.count_star().alias("n_orders"))
     .filter(q.col("n_orders") > 100)
     .sort(q.col("revenue").desc())
-    .head(10)
+    .head(10),
+    name="top_regions_output"
 )
 ```
 
@@ -227,7 +369,8 @@ q.output(
     customer.join(nation, on="nationkey")
     .select("custkey", "name", "regionkey", q.col("name_right").alias("nation"))
     .join(region, on="regionkey")
-    .select("custkey", "name", "nation", q.col("name_right").alias("region"))
+    .select("custkey", "name", "nation", q.col("name_right").alias("region")),
+    name="customer_geography_output"
 )
 ```
 
@@ -239,7 +382,8 @@ q.name("orders_with_customer")
 q.output(
     orders
     .filter(q.col("amount") > 0)
-    .lookup("customer", {"cust_id": "i64", "name": "string"}, on="cust_id")
+    .lookup("customer", {"cust_id": "i64", "name": "string"}, on="cust_id"),
+    name="orders_with_customer_output"
 )
 ```
 
@@ -251,7 +395,28 @@ q.name("revenue_15m")
 q.output(
     events
     .tumble("15m", group_by="region", on="ts")
-    .agg(q.col("amount").sum().alias("revenue"))
+    .agg(q.col("amount").sum().alias("revenue")),
+    name="revenue_output"
 )
 ```
 
+DataStage window functions with partitioning:
+
+```python
+sales = q.source("sales", {"category": "string", "product": "string", "amount": "f64", "date": "date"})
+q.name("ranked_products")
+q.output(
+    sales
+    .partition_by("category", order_by=[("amount", "desc")])
+    .select(
+        q.col("category"),
+        q.col("product"),
+        q.col("amount"),
+        q.col("date").strftime("%Y-%m").alias("month"),  # regular function works fine
+        q.col("amount").rank().alias("sales_rank"),
+        q.col("amount").row_number().alias("row_num")
+    )
+    .filter(q.col("sales_rank") <= 10),  # top 10 per category
+    name="top_products_output"
+)
+```

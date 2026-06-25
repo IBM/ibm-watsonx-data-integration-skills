@@ -1,0 +1,50 @@
+{
+  "version": {
+    "minorNumber": 55,
+    "producer": "di-agent-query-optimization-full-pushdown"
+  },
+  "extensionUris": [
+    {
+      "extensionUriAnchor": 1,
+      "uri": "urn:datastage:substrait:extensions:full-pushdown-sql"
+    }
+  ],
+  "relations": [
+    {
+      "root": {
+        "names": ["customer_id", "customer_name", "total_orders"],
+        "input": {
+          "read": {
+            "common": {
+              "direct": {},
+              "advancedExtension": {
+                "enhancement": {
+                  "nodeKind": "full_pushdown_read",
+                  "sqlStatement": "SELECT c.customer_id, c.customer_name, COUNT(o.order_id) AS total_orders FROM public.customer c LEFT JOIN public.orders o ON c.customer_id = o.customer_id GROUP BY c.customer_id, c.customer_name"
+                }
+              }
+            },
+            "baseSchema": {
+              "names": ["customer_id", "customer_name", "total_orders"],
+              "struct": {
+                "types": [
+                  { "i32": { "nullability": "NULLABILITY_REQUIRED" } },
+                  { "varchar": { "length": 100, "nullability": "NULLABILITY_NULLABLE" } },
+                  { "i64": { "nullability": "NULLABILITY_REQUIRED" } }
+                ]
+              }
+            },
+            "advanced_extension": {
+              "optimization": [
+                {
+                  "@type": "type.di.ibm.com/com.ibm.di.substrait.Optimization",
+                  "connection_id": "00000000-0000-0000-0000-000000000000"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}
