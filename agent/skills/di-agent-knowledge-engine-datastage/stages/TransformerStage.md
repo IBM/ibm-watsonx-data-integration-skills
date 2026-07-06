@@ -104,3 +104,4 @@ transformer_1.configuration.transformer_constraint = [
 - [Special Conversion functions](TransformerStageFunctions/SpecialConversion.md)
 - [Lookup functions](TransformerStageFunctions/Lookup.md)
 - [Vector functions](TransformerStageFunctions/Vector.md)
+- [Conditional expressions](TransformerStageFunctions/ConditionalExpressions.md)
