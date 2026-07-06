@@ -1,0 +1,26 @@
+{
+  "schema_version": "pushdown-workload-v1",
+  "dialect": "snowflake",
+  "source": {"kind": "script", "ref": "example-input.sql"},
+  "connection_id": "",
+  "rawSqlStatement": "INSERT INTO ${SCHEMA}.target_table (id, name, loaded_at) SELECT id, name, current_timestamp() FROM ${SCHEMA}.staging_table WHERE load_dt = '${DATA_DT}';\nCOMMIT;",
+  "parameters": ["SCHEMA", "DATA_DT"],
+  "hints": {
+    "force_mode": null,
+    "observability_select": "SELECT COUNT(*) AS target_table_rows FROM ${SCHEMA}.target_table",
+    "observability_schema": {
+      "names": ["target_table_rows"],
+      "types": [{"i64": {"nullability": "NULLABILITY_NULLABLE"}}]
+    },
+    "notes": []
+  },
+  "flow_metadata": {
+    "suggested_flow_name": null,
+    "parameter_defaults": {"SCHEMA": "PUBLIC"},
+    "runtime_hints": {
+      "schedule": null,
+      "tags": [],
+      "concurrency_group": null
+    }
+  }
+}

@@ -1,7 +1,7 @@
 {
   "version": {
     "minorNumber": 55,
-    "producer": "di-agent-query-optimization-full-pushdown"
+    "producer": "di-agent-query-optimization"
   },
   "extensionUris": [
     {
@@ -19,8 +19,17 @@
               "direct": {},
               "advancedExtension": {
                 "enhancement": {
-                  "nodeKind": "full_pushdown_read",
-                  "sqlStatement": "SELECT c.customer_id, c.customer_name, COUNT(o.order_id) AS total_orders FROM public.customer c LEFT JOIN public.orders o ON c.customer_id = o.customer_id GROUP BY c.customer_id, c.customer_name"
+                  "nodeKind": "source_full_pushdown_read",
+                  "sqlStatement": "SELECT c.customer_id, c.customer_name, COUNT(o.order_id) AS total_orders FROM public.customer c LEFT JOIN public.orders o ON c.customer_id = o.customer_id GROUP BY c.customer_id, c.customer_name",
+                  "flow_metadata": {
+                    "suggested_flow_name": "customer_order_counts",
+                    "parameter_defaults": {},
+                    "runtime_hints": {
+                      "schedule": null,
+                      "tags": [],
+                      "concurrency_group": null
+                    }
+                  }
                 }
               }
             },

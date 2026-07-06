@@ -9,17 +9,39 @@ Verify again before generating code:
 
 - exactly one top-level relation;
 - the relation contains `relations[0].root.input.read`;
-- `nodeKind` is `"full_pushdown_read"`;
+- `nodeKind` is `"source_full_pushdown_read"` or `"target_full_pushdown_read"`;
 - `sqlStatement` is present and non-empty;
 - `read.advanced_extension.optimization[0].connection_id` is present.
 
+Use only the optimized plan's `connection_id` for this workload. If
+runtime metadata lookup fails, stop and ask for that connection's
+metadata; do not switch to another connector.
+
 Extract:
 
+- `nodeKind` from `read.common.advancedExtension.enhancement.nodeKind`;
 - `sqlStatement` from `read.common.advancedExtension.enhancement.sqlStatement`;
+- `beforeSqlStatement` from
+  `read.common.advancedExtension.enhancement.beforeSqlStatement` when
+  `nodeKind == "target_full_pushdown_read"`;
 - `connection_id` from `read.advanced_extension.optimization[0].connection_id`;
 - output column names from `relations[0].root.names`;
 - output column types from `read.baseSchema.struct.types`;
-- suggested flow name from source metadata, or use `full_pushdown_to_file`.
+- suggested flow name, parameter defaults, and parameter bindings from
+  `read.common.advancedExtension.enhancement.flow_metadata`.
+
+If `flow_metadata` carries resolved table metadata such as catalog,
+schema, table, or data asset id, preserve it in the generated summary.
+
+For `source_full_pushdown_read`, `sqlStatement` is the workload SELECT. For
+`target_full_pushdown_read`, `beforeSqlStatement` is the workload block
+(`INSERT`, `UPDATE`, `COPY`, `MERGE`, etc.) and `sqlStatement` is the
+optimizer-chosen observability SELECT whose rows flow into the sink.
+
+After extraction, load the topology reference for the selected mode:
+
+- `source-pushdown-topology.md` for `source_full_pushdown_read`;
+- `target-pushdown-topology.md` for `target_full_pushdown_read`.
 
 If `connection_id` is missing, stop and ask:
 
@@ -55,10 +77,23 @@ For strings, pass `length=<length>`; use the plan length when present, otherwise
 
 The generated flow contains exactly:
 
-1. One database connector source stage that executes the SQL statement.
+1. One database connector source stage configured in SQL-read mode.
 2. One `Sequential file` sink stage.
 3. One link from source to sink.
 4. Link schema copied from the optimized plan's read `baseSchema`.
+
+Both supported pushdown modes use this same graph. They differ only in
+which connector SQL properties are populated:
+
+| `nodeKind` | Connector workload | Connector row source |
+|---|---|---|
+| `source_full_pushdown_read` | none | `sqlStatement` in the select-statement property |
+| `target_full_pushdown_read` | `beforeSqlStatement` in before-SQL | `sqlStatement` in the select-statement property as an observability SELECT |
+
+Read the topology reference for the selected mode before generating code.
+The topology files own connector SQL property values. This file owns the
+shared two-stage graph, schema, sink, type mapping, template, and MCP
+subset rules.
 
 The sink is always `flow.add_stage(type = "Sequential file", label = "sequentialfile_0")`.
 `sequentialfile_0.configuration.file` is a one-element list, not a string.
@@ -104,25 +139,151 @@ adjust only that property. Do not change the full-pushdown topology. Do not drop
 
 ## SQL-Mode Connector Pattern
 
-Full pushdown drives the read connector in SQL mode, not table-name mode:
+Both supported pushdown modes drive the database connector in SQL mode,
+not table-name mode. The mode-specific topology file decides which SQL
+properties are populated:
 
-```python
-conn_read_000 = cast(Connection, project.connections.get(name="<connection-name>"))
-read_000 = flow.add_stage(type = "<connector_stage_label>", label = "<map_name>_0")
-read_000.use_connection(conn_read_000)
-read_000.configuration.execution_mode = <CONNECTOR_ENUM>.ExecutionMode.seq
-read_000.configuration.read_method = <CONNECTOR_ENUM>.ReadMethod.select
-read_000.configuration.select_statement = """<sqlStatement>"""
+- `source-pushdown-topology.md` sets only the connector select-statement
+  to the workload SELECT.
+- `target-pushdown-topology.md` sets connector before-SQL to the workload
+  block and the select-statement to the observability SELECT.
+
+Resolve connector labels, map names, enum names, and SQL-read support from
+`references/datastage-connector-sdk-reference.md`. Do not guess enum
+spelling. Do not emit `generate_sql_at_runtime = True` with
+`select_statement`; that mode is for table-name reads with runtime SQL
+generation.
+
+## Parameter Rendering
+
+The optimized plan may preserve source/dialect parameter syntax in SQL.
+Render parameters to DataStage syntax only when generating the flow.
+
+Inputs:
+
+- `enhancement.parameters`: normalized parameter names.
+- `flow_metadata.parameter_defaults`: optional defaults keyed by
+  normalized parameter name. For local bindings, use as the local
+  parameter default; for parameter-set bindings, use as a member-level
+  runtime value unless `runtime_value` is supplied.
+- `flow_metadata.parameter_bindings`: optional binding metadata keyed by
+  normalized name.
+
+For every name in `enhancement.parameters`, resolve a binding:
+
+```json
+{
+  "source_syntax": "${TARGET_DB}",
+  "binding": "local | parameter_set",
+  "type": "string",
+  "usage": "identifier | literal | unknown",
+  "description": "Target database",
+  "parameter_set_name": "ENV_PARAMS",
+  "parameter_name": "TARGET_DB",
+  "value_set": "prod",
+  "runtime_value": "DW"
+}
 ```
 
-Resolve `<connector_stage_label>`, `<map_name>`, and `<CONNECTOR_ENUM>` from
-`references/datastage-connector-sdk-reference.md`. Do not guess enum spelling.
+Defaults when a binding is absent:
 
-Set `execution_mode` to `ExecutionMode.seq` when the connector exposes that enum. If
-a connector has no `execution_mode` field, omit it.
+- `binding = "local"`
+- `type = "string"`
+- `usage = "unknown"`
+- `parameter_name = <NAME>`
+- `runtime_value = null`
 
-Do not emit `generate_sql_at_runtime = True` with `select_statement`; that mode is for
-table-name reads with runtime SQL generation.
+Local binding is the default. Use a parameter-set binding only when the
+optimized plan already says so; the flow skill must not promote local
+parameters into parameter sets based on name patterns.
+
+When `source_syntax` is absent, including when the entire binding is
+absent, apply the known fallback registry in this order for the
+normalized name:
+
+1. `${NAME}` — SnowSQL/shell-template style placeholders. Safe
+   backward-compatible default.
+2. `&&NAME`, then `&NAME` — SQL*Plus/Oracle-script style placeholders.
+   Use only when the token appears for that exact normalized name and
+   the source/dialect indicates SQL*Plus-style scripting, or when no
+   other fallback matches and the token is outside strings/comments.
+3. `:NAME` — named-bind style placeholders. Use only when the token is
+   outside strings/comments and is not part of a dialect operator or
+   cast syntax.
+
+Do not fallback-render positional `?`; it has no stable parameter name.
+Require explicit metadata for positional parameters.
+
+**Already-rendered guard** — before searching for source-syntax tokens,
+scan the SQL for existing `#…#` spans. If `#<PS>.<PARAM>#` or `#<NAME>#`
+already appears for a parameter, count it as present and skip the
+source-token search and rewrite for that parameter. Do not render it
+again.
+
+Rewrite SQL text before assigning connector properties:
+
+- local parameter target: `#<NAME>#`
+- parameter-set target: `#<parameter_set_name>.<parameter_name>#`
+
+Apply the rewrite to `sqlStatement` and, for target pushdown,
+`beforeSqlStatement`. If the declared source token is absent from all
+SQL strings **and** the already-rendered form is also absent, stop and
+report the missing parameter reference. Do not scan for unrelated
+dialect syntaxes beyond the fallback registry. Never rewrite inside SQL
+string literals or comments unless the adapter explicitly marks those
+spans as template placeholders.
+
+Declare parameters before stage definitions:
+
+```python
+flow.add_local_parameter("string", "$APT_OSL_PARAM_ESC_SQUOTE", value="True")
+flow.add_local_parameter("<type>", "<NAME>", value="<default>", prompt="<description>")
+```
+
+Use `flow.add_local_parameter`, not `flow.add_parameter`. The installed
+SDK signature is:
+
+```python
+flow.add_local_parameter(parameter_type, name, description="", prompt="", value="", valid_values=[])
+```
+
+For parameter-set bindings:
+
+```python
+paramset_env_params = project.parameter_sets.get(name="ENV_PARAMS")
+flow.use_parameter_set(paramset_env_params)
+flow.set_runtime_value_set(parameter_set_name="ENV_PARAMS", value_set_name="prod")  # only when value_set is supplied
+flow.set_runtime_parameter_value(parameter_set_name="ENV_PARAMS", parameter_name="TARGET_DB", value="DW")  # only when an explicit value override is supplied
+```
+
+Retrieve a parameter set at most once even if multiple parameters use
+it. Validate that every referenced `parameter_name` exists in the
+retrieved set and that `value_set` exists when supplied. If validation
+fails, stop before creating/updating a flow.
+
+Runtime parameter values use three distinct SDK calls:
+
+- `flow.set_runtime_value_set(parameter_set_name="<PS_NAME>", value_set_name="<VALUE_SET>")`
+  selects a named value set for the whole parameter set. Use only when
+  `parameter_bindings[NAME].value_set` is supplied.
+- `flow.set_runtime_parameter_value(parameter_set_name="<PS_NAME>", parameter_name="<PARAM>", value="<VALUE>")`
+  overrides one member of an attached parameter set. Use when an
+  explicit `runtime_value` is supplied for a `parameter_set` binding. If
+  `flow_metadata.parameter_defaults[NAME]` is present for a
+  `parameter_set` binding, treat it as this member-level runtime value.
+- `flow.set_runtime_local_parameter(local_parameter_name="<NAME>", value="<VALUE>")`
+  overrides a local parameter at runtime. Use when `runtime_value` is
+  supplied for a local binding; still declare the local
+  parameter with `flow.add_local_parameter(...)` first.
+
+Parameter types should use SDK parameter types such as `string`,
+`int64`, `sfloat`, `date`, `timestamp`, `encrypted`, `path`, `time`,
+or `multilinestring`. Use `string` when unspecified.
+
+For parameters with `usage = "identifier"` and a default value, validate
+the default conservatively before writing it into the flow, e.g.
+`^[A-Za-z_][A-Za-z0-9_$]*$` for common SQL identifiers. Do not quote or
+escape identifier parameters automatically.
 
 ## SQL Identifier Case
 
@@ -175,11 +336,24 @@ When `create_datastage_flow` is available (or `update_datastage_flow`, for revis
 an existing flow), send only the subset:
 
 - include `flow = project.create_flow(name="<FLOW_NAME>", description="", environment=None, flow_type="batch")`;
+- include local parameter declarations and parameter-set attachments
+  before stage definitions when the optimized plan contains parameters;
+  the MCP validator accepts all of:
+  - `flow.add_local_parameter(type, name, value=..., prompt=...)`
+  - `ps_var = project.parameter_sets.get(name="<PS_NAME>")`
+  - `flow.use_parameter_set(ps_var)`
+  - `flow.set_runtime_value_set(parameter_set_name="<PS_NAME>", value_set_name="<VALUE_SET>")` (only when value_set is set)
+  - `flow.set_runtime_parameter_value(parameter_set_name="<PS_NAME>", parameter_name="<PARAM>", value="<VALUE>")` (only when a parameter-set value override is set)
+  - `flow.set_runtime_local_parameter(local_parameter_name="<NAME>", value="<VALUE>")` (only when a local runtime override is set)
 - include stage definitions, flow graph, and schema definition;
 - omit imports, `cast(...)`, `Connection`, auth/platform setup, project retrieval,
   `project.update_flow(...)`, job creation, job run, monitoring, CLI parsing, and
   environment loading;
-- use `project.connections.get(name="<CONN_NAME>")` directly;
+- use `project.connections.get(name="<CONN_NAME>")` directly, then attach it with
+  `<stage_var>.use_connection(<conn_var>)`;
+- do not assign connections through `<stage_var>.configuration.connection = ...`;
+  the MCP SDK-code validator rejects that statement even though `connection` is
+  listed as a stage property;
 - call `create_datastage_flow(flow_name=<FLOW_NAME>, project_id=<PROJECT_ID>, sdk_code=<subset>)`
   to create a new flow, or `update_datastage_flow` with the same arguments to
   overwrite an existing flow in place;
@@ -189,37 +363,9 @@ an existing flow), send only the subset:
   pick a new flow name. Conversely, `update_datastage_flow` errors when no flow with
   that name exists, so use `create_datastage_flow` for the first publish.
 
-Minimal subset pattern:
-
-```python
-flow = project.create_flow(name="<FLOW_NAME>", description="", environment=None, flow_type="batch")
-
-# Stage definition
-conn_postgresql_ibmcloud_0 = project.connections.get(name="<connection-name>")
-postgresql_ibmcloud_0 = flow.add_stage(type = "IBM Cloud Databases for PostgreSQL", label = "postgresql_ibmcloud_0")
-postgresql_ibmcloud_0.use_connection(conn_postgresql_ibmcloud_0)
-postgresql_ibmcloud_0.configuration.execution_mode = POSTGRESQL_IBMCLOUD.ExecutionMode.seq
-postgresql_ibmcloud_0.configuration.read_method = POSTGRESQL_IBMCLOUD.ReadMethod.select
-postgresql_ibmcloud_0.configuration.select_statement = """<sqlStatement>"""
-
-sequentialfile_0 = flow.add_stage(type = "Sequential file", label = "sequentialfile_0")
-sequentialfile_0.configuration.file_update_mode = SEQUENTIALFILE.AppendOverwrite.overwrite
-sequentialfile_0.configuration.final_delimiter = SEQUENTIALFILE.FinalDelimiter.end
-sequentialfile_0.configuration.file = ["<flow_name>.csv"]
-sequentialfile_0.configuration.first_line_is_column_names = SEQUENTIALFILE.FirstLineColumnNames.true
-sequentialfile_0.configuration.delimiter = SEQUENTIALFILE.Delimiter.comma
-sequentialfile_0.configuration.null_field_value = "NULL"
-sequentialfile_0.configuration.create_data_asset = True
-sequentialfile_0.configuration.data_asset_name = "<flow_name>"
-
-# Flow graph
-link_1 = postgresql_ibmcloud_0.connect_output_to(sequentialfile_0)
-link_1.name = "Link_1"
-schema_postgresql_ibmcloud_0 = link_1.create_schema()
-
-# Schema definition
-schema_postgresql_ibmcloud_0.add_field("<DATASTAGE_TYPE>", "<column_name>", nullable=True)
-```
+Use the selected topology file's connector-property model when writing the
+stage definition. The resulting MCP subset must still contain exactly one
+connector, one Sequential file sink, one link, and one schema.
 
 The link must be a separate statement assigned to a variable, then named via
 `link.name = "Link_1"`, then `link.create_schema()`. The chained form
@@ -232,5 +378,9 @@ Expected-code conventions:
 - Connection variables use `conn_<stage_var>`.
 - `flow.add_stage` uses named arguments: `type = "...", label = "..."`.
 - Schema variables are named `schema_<source_stage_var>`.
-- Schema fields use `add_field(...)` keyword arguments accepted by the installed SDK,
-  such as `nullable=True`, `length=...`, `precision=...`, and `scale=...`.
+- Schema fields use `add_field("<DATASTAGE_TYPE>", "<column_name>", ...)` — the
+  **DataStage type is the first positional argument, the column name the second**
+  (e.g. `add_field("BIGINT", "LOADED_ROW_COUNT", nullable=True)`). Passing the name
+  first fails validation (`'<name>' is not a valid schema field type`). Keyword
+  arguments accepted by the installed SDK: `nullable=True`, `length=...`,
+  `precision=...`, `scale=...`.

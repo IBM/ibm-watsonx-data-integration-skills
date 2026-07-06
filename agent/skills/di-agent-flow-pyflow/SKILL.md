@@ -67,7 +67,7 @@ StreamSets windowed-agg measures support only `.sum()`.
 
 ## Symbols And Bindings
 
-Strings passed to `q.source()`, `.lookup()`, and `q.write()` are local **symbols**. The caller binds each symbol to a catalog asset via `create_pyflow(bindings=...)`; symbols need not match catalog names. Every used symbol must be bound.
+Strings passed to `q.source()`, `.lookup()`, and `q.write()` are local **symbols**. The caller binds each symbol to a catalog asset via `create_pyflow(bindings=...)`; symbols need not match catalog names. Every used symbol must be bound except for the symbol `dev_raw_data` since it is used for stage Dev Raw Data Source which writes raw data directly without any data asset.
 
 ## Types
 
@@ -86,7 +86,7 @@ Python literals auto-convert: `int -> i64`, `float -> f64`, `str -> string`, `bo
 q.source(symbol, {"col": "type", ...}) -> Frame   # dict form; supports names with spaces/punctuation; at least one column must be provided
 q.source(symbol, col="type", ...) -> Frame         # kwargs form; identifier-safe names; at least one column must be provided
 q.source(symbol, col="type", ..., schema_metadata={...}) -> Frame  # with schema metadata (Kafka/StreamSets)
-q.name(name)                              # flow name; snake_case; exactly once
+q.name(name)                              # flow name; snake_case; exactly once — see Flow Naming below
 q.output(frame, name)                     # register final output; required name for flat-file output
 q.write(frame, symbol, operation="insert")  # write final output to destination
 q.col(name) -> Expr                       # column reference
@@ -97,6 +97,39 @@ q.concat(*exprs) -> Expr                  # string concat; 2+ args
 q.date_diff(d1, d2) -> Expr               # day difference as i64
 q.strptime_time(expr, fmt) -> Expr        # string -> temporal; fmt is a strftime-style format
 q.strftime(expr, fmt, tz?) -> Expr        # temporal -> string; tz is an IANA name
+```
+
+### Dev Raw Data Source Handling Instructions
+
+1.  If the user specifies that the source is "Dev Raw Data Source":
+    *   The table_name passed to q.source() must be "dev_raw_data".
+    *   The user request must include the following fields:
+        a.  raw_data
+        b.  data_format
+2.  If either raw_data or data_format is missing:
+    *   Prompt the user explicitly to provide these fields.
+    *   These are required to derive the schema using the get_dev_raw_data_schema MCP tool.
+3.  Schema derivation rules:
+    *   Use up to the first 10 records from raw_data to infer the schema. If fewer than 10 records are available, use all of them.
+4.  Supported values for data_format:
+    *   "JSON"
+    *   "Delimited"
+    *   "Avro JSON"
+5.  If the user provides any unsupported data_format:
+    *   Immediately ask the user to choose one of the supported formats listed above.
+
+Pyflow Code - for example:
+
+```python
+# Source: Dev Raw Data Source (schema to be derived from the raw_data in the request using get_dev_raw_data_schema tool)
+# Note: get_dev_raw_data_schema only gets you schema for Source, for schema of target, you need to use inspect_project_asset tool
+source_data = q.source("dev_raw_data", {"id":"i32", "name": "string"})
+
+# Name the flow
+q.name("dev_raw_to_pg_backup")
+
+# Write to target table
+q.write(source_data, "target_table", operation="insert")
 ```
 
 ### Source Schema Metadata `[streamsets]`
@@ -339,6 +372,23 @@ t.select("status", q.col("x").count().alias("n"))       # grouped by status
 ```
 
 For a computed grouping key, materialize it with `.with_columns()` first, then group by that column name.
+
+## Flow Naming
+
+The name passed to `q.name()` is used as the base flow name. To avoid collisions across repeated
+compilations, `create_pyflow` appends a short random suffix when it creates the flow
+(e.g. `my_flow` becomes `my_flow_a4bc9z1q`).
+
+If the user requested a specific name, use `rename_datastage_flow` after creation to strip the
+suffix and apply it. Pass the `flow_id` returned by `create_pyflow` and the intended name:
+
+```
+rename_datastage_flow(
+    flow_id    = "<flow_id from create_pyflow>",
+    new_name   = "<the name passed to q.name()>",
+    project_id = "<project_id>",
+)
+```
 
 ## Examples
 

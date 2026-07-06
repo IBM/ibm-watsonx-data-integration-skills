@@ -231,9 +231,9 @@ When `accepted_values` on a field is non-empty, use one of those values exactly.
 - **Enums**: Use `STAGENAME.PropertyName.enum_value` format, e.g. `PEEK.Dataset.true`
 - **Lists or Dicts**: For complex properties like `key_properties`
 
-### Execmode
+### Stage-specific enum classes
 
-Stage execmode requires the stage-specific enum class:
+Enum-valued properties require the **stage-specific** enum class — the class name is the stage's own (e.g. `ROW_GENERATOR.Execmode`, `POSTGRESQL_IBMCLOUD.TableAction`), not a shared/global one. The same property name (`execmode`, `table_action`, …) maps to a different enum class per stage, so you cannot reuse one stage's class for another.
 
 ```python
 from ibm_watsonx_data_integration.services.datastage import PEEK, ROW_GENERATOR
@@ -242,6 +242,10 @@ row_gen.configuration.execmode = ROW_GENERATOR.Execmode.par   # parallel
 peek.configuration.execmode = PEEK.Execmode.seq               # sequential
 peek.configuration.dataset = PEEK.Dataset.false
 ```
+
+`table_action` follows the exact same rule — the truncate/replace enum class depends on the connector stage type: `POSTGRESQL_IBMCLOUD.TableAction.replace` for "IBM Cloud Databases for PostgreSQL", `POSTGRESQL.TableAction.replace` for generic PostgreSQL, `ODBC.TableAction.replace` for ODBC stages. There is no `overwrite` property — use `table_action`.
+
+When unsure which enum class a stage uses, call `datastage_property_lookup` with the stage name and read the property's enum class name from the result.
 
 Other common stage properties: `auto_column_propagation`, `combinability`.
 
@@ -507,7 +511,7 @@ link3.name = "Link_3"
 1. **The code will NOT be executed in a full Python environment.** Only generate simple, flat syntax as described above.
 2. **Do not hallucinate methods** that are not listed here.
 3. **Do not add `update_flow` or `compile` calls at the end** of a submission — those are handled by the MCP tool. Avoid imports beyond built-ins and `ibm_watsonx_data_integration` paths.
-4. **No complex Python constructs:** loops (`for`, `while`), conditionals (`if`, `elif`, `else`, `match`), functions (`def`, `async def`, `lambda`), exception handling (`try`, `except`, `finally`, `raise`), context managers (`with`, `async with`), classes (`class`), decorators (`@`), assertions (`assert`), `del`, augmented assignments (`+=`, `-=`, etc.), `return`, `yield`, `break`, `continue`, `pass`, `global`, `nonlocal`.
+4. **No complex Python constructs:** loops (`for`, `while`), conditionals (`if`, `elif`, `else`, `match`), functions (`def`, `async def`, `lambda`), exception handling (`try`, `except`, `finally`, `raise`), context managers (`with`, `async with`), classes (`class`), decorators (`@`), assertions (`assert`), `del`, augmented assignments (`+=`, `-=`, etc.), the walrus / named-expression operator (`:=` — never inline-assign inside another expression; assign to a variable on its own line first), `return`, `yield`, `break`, `continue`, `pass`, `global`, `nonlocal`.
 5. **Stage types and datasource types must match exactly** and are case sensitive.
 6. **Avoid modifying user-inputted code unless absolutely necessary.**
 7. **Always include every required property.** Guess mock values when a required property is not explicitly specified. Never skip conditionally required properties when the condition is met.
@@ -525,3 +529,4 @@ link3.name = "Link_3"
 - **Never guess enum values.** Inspect `accepted_values` and use one exactly.
 - **`project.validate_flow(flow)` does not exist** — use `flow.compile()` for batch.
 - **Connection must be a variable, not a string literal** — always assign to a variable first.
+- **Table action enums are stage-specific** (e.g. `POSTGRESQL_IBMCLOUD.TableAction.replace`, not `POSTGRESQL.TableAction` or `overwrite`). This is the same per-stage enum-class rule as `execmode` — see [Stage-specific enum classes](#stage-specific-enum-classes).
