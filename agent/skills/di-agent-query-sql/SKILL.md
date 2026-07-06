@@ -48,15 +48,28 @@ The conversion process:
 
 ### Phase 1: Generate Substrait Plan (Steps 1-6)
 
-Follow the complete workflow from `di-agent-query-substrait` skill to generate a valid Substrait plan:
+Follow `di-agent-query-substrait` for semantic DSL generation rules, examples,
+schema verification, and `NamedStruct` construction. For SQL generation,
+the compile step is overridden by this skill: call `compile_substrait_dsl`
+with `project_id` and `asset_ids`, not `read_tables`, so the compiler preserves
+full table paths in `namedTable.names`.
 
 1. **Fetch Few-Shot Examples** - Call `get_substrait_dsl_examples`
 2. **Verify Schema from Assets** - Use `list_data_assets` and `inspect_project_asset` to get asset metadata and connection information
 3. **Resolve Runtime SQL Dialect** - Resolve the `target_dialect` value used only for runtime `/sql` conversion from the inspected data asset's connection metadata, with fallback to runtime default dialect behavior when it cannot be identified
-4. **Generate DSL** - Call `get_substrait_dsl_spec` and write DSL code. When calling `compile_substrait_dsl`:
-   - If `asset_ids` parameter is provided, use empty `NamedStruct({})` in `ReadTable` - the tool will automatically resolve table schemas from the assets
-   - If `asset_ids` is not provided, manually construct the `NamedStruct` with verified column types from inspected assets
-5. **Compile DSL** - Call `compile_substrait_dsl` with appropriate `asset_ids` parameter when available
+4. **Generate DSL** - Call `get_substrait_dsl_spec` and write DSL code following
+   `di-agent-query-substrait` rules for type mapping and `NamedStruct` construction.
+   Use `table_name` equal to the logical asset name (e.g. `'orders'`), not a
+   schema-prefixed string, so that `asset_ids` binding can resolve the full path.
+5. **Compile DSL** - Call `compile_substrait_dsl` with **both** `asset_ids` and
+   `project_id` so the compiler resolves the full table path from asset metadata
+   into `namedTable.names` (e.g. `["schema", "table"]` or
+   `["catalog", "schema", "table"]` depending on the asset). This is required so
+   that Phase 2 `/sql` can emit a schema-qualified `FROM` clause. The
+   `NamedStruct` must still contain the correct column names and types — when
+   `asset_ids` is provided the compiler validates the declared types against the
+   asset and will error on any mismatch. Phase 1 succeeds only when
+   `compile_substrait_dsl` returns a compiled Substrait JSON plan.
 6. **Correct Obvious Low-Risk Errors Only** - If compilation fails because of an immediately correctable generation mistake, fix it and retry; otherwise proceed to fallback
 
 **Important:** You must attempt Phase 1 first. The Substrait JSON from a

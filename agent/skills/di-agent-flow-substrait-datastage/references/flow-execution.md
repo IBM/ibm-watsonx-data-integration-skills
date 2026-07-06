@@ -16,8 +16,22 @@ For **build pushdown DataStage flow and run**:
    already exists.
 4. If create/update succeeds, use MCP job tools when available:
    `create_job`, `create_job_run`, `poll_datastage_job`.
-5. Fetch outputs with the appropriate result tool, such as
-   `get_flow_results_from_cos` for a Sequential file target.
+5. **Fetch outputs only when the sink produced a data asset.** This step
+   is sink-dependent:
+   - **Sequential file** sink → fetch with the result tool
+     (e.g. `get_flow_results_from_cos`). This is the only sink that
+     persists rows as a data asset the agent can read back.
+   - **PxCopy** sink (target pushdown only) → **skip this step**. PxCopy
+     is pure pass-through; no file is written. The job's success status
+     from step 4 is the only observable, which is exactly the point —
+     the real work happened inside the source database via before-SQL,
+     and the user has already opted out of writing observability rows
+     anywhere.
+   - **PxPeek** sink → **skip the result-fetch tool**. PxPeek writes to
+     the job log, not to a data asset. If the user asked to see the
+     observability output, return the relevant portion of the job log
+     from `poll_datastage_job` (or a log-fetch tool when available)
+     instead of calling a result tool.
 6. If MCP create/update fails after actionable SDK-code corrections, or job/result
    tools are unavailable, run the generated script locally as-is:
    `python <generated_script>.py --create_flow`, then

@@ -115,6 +115,29 @@ when it folds a Project/Filter chain back into the connector. If you're translat
 from a lowered plan that already split out a `CTransformerStage`, the read should be
 in general mode.
 
+### Properties emitted — target-pushdown extension (SQL mode + before-SQL)
+
+When `enhancement.nodeKind == "target_full_pushdown_read"`, the workload
+runs as the connector's before-SQL and the connector select-statement
+holds a separate observability SELECT. The value mapping from the
+optimized plan into connector properties is:
+
+| Property purpose | Value source |
+|---|---|
+| Connector select-statement | `nodeInfo.sqlStatement` (the observability SELECT) |
+| Connector before-SQL | `nodeInfo.beforeSqlStatement` (the workload — INSERT/UPDATE/COPY/...) |
+| Before-SQL node companion | literal `""` |
+| Fail-on-error toggles (before-SQL, before-SQL node, after-SQL, after-SQL node) | literal `True` |
+| After-SQL fields | literal `""` (no after-SQL by default) |
+
+For the per-mode SDK field names (Native vs. DataStage) see
+`datastage-connector-sdk-reference.md` § "Pushdown property naming".
+For Python emission, see `target-pushdown-topology.md`.
+
+**Do not set `database_name`, `dataset_name`, `table_name`, `schema_name`,
+`write_mode`, or `table_action`** for either pushdown `nodeKind`. Table
+refs and operations live inside the SQL.
+
 ---
 
 ## Write stages

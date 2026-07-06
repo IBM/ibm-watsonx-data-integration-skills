@@ -21,7 +21,9 @@
 #   <CONNECTOR_LABEL>    connector label from references/datastage-connector-sdk-reference.md
 #   <CONNECTOR_VAR>      <SDK class / map name>_0 from the same lookup (e.g. postgresql_ibmcloud_0)
 #   <CONNECTOR_ENUM>     enum class from references/datastage-connector-sdk-reference.md
-#   <SQL_STATEMENT>      sqlStatement from the read node's enhancement
+#   <SQL_STATEMENT>      rendered sqlStatement from the read node's enhancement
+#   <PARAMETER_SETUP>    optional local parameter declarations and parameter-set
+#                        attachments emitted before any stage definitions
 #   <OUTPUT_FILE>        CSV output path for the Sequential file sink
 #   <SCHEMA_FIELDS>      one schema_<CONNECTOR_VAR>.add_field(...) per output column
 
@@ -114,6 +116,18 @@ def create_flow():
         # Fill this region with three labeled sections, in order:
         #
         #   # Stage definition
+        #     - If the optimized plan contains parameters, start this section with
+        #       the required flow.add_local_parameter(...) calls and any
+        #       project.parameter_sets.get(...), flow.use_parameter_set(...), and
+        #       runtime value calls:
+        #       flow.set_runtime_value_set(...),
+        #       flow.set_runtime_parameter_value(...), and
+        #       flow.set_runtime_local_parameter(...). Render SQL placeholders to
+        #       DataStage #PARAM# / #PARAM_SET.PARAM# syntax before assigning SQL
+        #       to connector properties.
+        #     - Always add the local environment parameter when parameterized SQL
+        #       is emitted:
+        #       flow.add_local_parameter("string", "$APT_OSL_PARAM_ESC_SQUOTE", value="True")
         #     - One database connector source in SQL mode (read_method + select_statement).
         #     - One Sequential file sink (type = "Sequential file") with these defaults:
         #       file_update_mode=SEQUENTIALFILE.AppendOverwrite.overwrite,
@@ -140,8 +154,11 @@ def create_flow():
         #       DataStage-safe, sanitize SQL SELECT-list aliases and the output
         #       schema names before filling this block. Types come from
         #       read.baseSchema.struct.types in the same positional order.
-        #       Field properties use add_field(...) keyword arguments supported by
-        #       the installed SDK, e.g. nullable=True and length=1024.
+        #       Signature is add_field("<DATASTAGE_TYPE>", "<name>", ...): the
+        #       DataStage type is the FIRST positional arg, the column name the
+        #       SECOND — e.g. add_field("BIGINT", "LOADED_ROW_COUNT", nullable=True).
+        #       Passing the name first fails validation. Optional kwargs supported
+        #       by the installed SDK: nullable=True, length=1024, precision=, scale=.
         #
         # Do not insert additional stages, transformers, joins, or alternate sinks.
         # <<< END_FILL >>>

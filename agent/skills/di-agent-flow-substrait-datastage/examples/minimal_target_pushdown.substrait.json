@@ -1,0 +1,58 @@
+{
+  "version": {
+    "minorNumber": 55,
+    "producer": "di-agent-query-optimization"
+  },
+  "extensionUris": [
+    {
+      "extensionUriAnchor": 1,
+      "uri": "urn:datastage:substrait:extensions:full-pushdown-sql"
+    }
+  ],
+  "relations": [
+    {
+      "root": {
+        "names": ["target_table_1_rows"],
+        "input": {
+          "read": {
+            "common": {
+              "direct": {},
+              "advancedExtension": {
+                "enhancement": {
+                  "nodeKind": "target_full_pushdown_read",
+                  "beforeSqlStatement": "INSERT INTO mydb.public.target_table_1 (id, name, loaded_at) SELECT id, name, current_timestamp() FROM mydb.public.staging_table WHERE load_dt = '${DATA_DT}';\nCOMMIT;",
+                  "sqlStatement": "SELECT COUNT(*) AS target_table_1_rows FROM mydb.public.target_table_1",
+                  "flow_metadata": {
+                    "suggested_flow_name": "load_target_table_1",
+                    "parameter_defaults": {"DATA_DT": "20260101"},
+                    "runtime_hints": {
+                      "schedule": null,
+                      "tags": [],
+                      "concurrency_group": null
+                    }
+                  }
+                }
+              }
+            },
+            "baseSchema": {
+              "names": ["target_table_1_rows"],
+              "struct": {
+                "types": [
+                  { "i64": { "nullability": "NULLABILITY_NULLABLE" } }
+                ]
+              }
+            },
+            "advanced_extension": {
+              "optimization": [
+                {
+                  "@type": "type.di.ibm.com/com.ibm.di.substrait.Optimization",
+                  "connection_id": "00000000-0000-0000-0000-000000000000"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

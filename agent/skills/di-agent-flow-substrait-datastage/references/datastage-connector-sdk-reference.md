@@ -90,3 +90,142 @@ Single-table connector lookup keyed by SDK class / connector map name. Use this 
 | Teradata database for DataStage | `teradata_datastage` | `teradata-datastage` | `TERADATA_DATASTAGE` | yes | `execution_mode`, `select_statement`, `schema_name`, `table_name`, `write_mode`, `table_action` |
 | Vertica | `vertica` | `vertica` | `VERTICA` | yes | `execution_mode`, `read_method`, `select_statement`, `schema_name`, `table_name`, `write_mode`, `table_action` |
 | IBM watsonx.data Presto | `watsonx_data` | `lakehouse` | `WATSONX_DATA` | yes | `execution_mode`, `read_method`, `select_statement`, `schema_name`, `table_name`, `table_action` |
+
+## Pushdown property naming (SQL-mode read with optional before-SQL)
+
+When generating the Python SDK code for source and target pushdown, you
+do **not** set the connector's `database_name`, `dataset_name`,
+`table_name`, `schema_name`, `write_mode`, or `table_action` — the SQL
+embeds whatever table refs and operations it needs. Set only the
+SQL-mode properties below.
+
+Some connectors (Snowflake, Apache Hive, Impala, JDBC) expose **two
+parallel property sets** on the same stage model. The
+`ds_use_datastage` flag selects which set the connector reads at
+runtime:
+
+- **Native mode** — `ds_use_datastage = False`. The connector uses
+  its dotted aliases (`select_statement`, `before_after.before`, ...)
+  mapped to bespoke SDK field names like `select_statement` and
+  `enable_before_sql`. The connector also requires the dialect-typed
+  `read_method` enum to be set to its `select` variant. **This is the
+  default for new pushdown flows.**
+- **DataStage mode** — `ds_use_datastage = True`. The connector uses
+  the `_underscore` aliases (`_select_statement`, `_before_after._before_sql`,
+  ...) mapped to `ds_*` SDK field names. This is the older
+  hand-built reference pattern; we keep it documented as an
+  alternative.
+
+Connectors that don't have the `ds_*` family at all (Db2, Oracle,
+BigQuery, Databricks, MySQL, PostgreSQL, Teradata, SQL Server, Vertica,
+Greenplum, Redshift, Synapse, Azure SQL, Azure PostgreSQL, Netezza,
+Sybase, SAP IQ, SingleStore, MariaDB, Informix, Exasol, Presto, Denodo,
+Derby, DataStax, watsonx.data) always use Native mode — there's no
+`ds_use_datastage` flag and no DataStage-mode fields to set.
+
+### Native mode (`ds_use_datastage = False`, default)
+
+Default property set for all connectors that support pushdown.
+
+| Alias | SDK field name (`configuration.<name>`) | SDK field type | Value for pushdown |
+|---|---|---|---|
+| `_use_datastage` | `ds_use_datastage` | `bool \| None` | `False` — selects Native mode. Connectors without this flag (Db2, Oracle, etc.) skip this row. |
+| `read_mode` | `read_method` | `<Connector>.ReadMethod \| None` | enum value `select` — required on Snowflake/Hive/Impala/JDBC to put the connector in SQL-read mode. Db2/Oracle/etc. either default to SQL-read or use a similar enum; consult the per-connector enum module. |
+| `select_statement` | `select_statement` | `str` | source pushdown: the workload SELECT. Target pushdown: the observability SELECT. |
+| `before_after.before` | `enable_before_sql` | **`str \| None`** | target pushdown: **the workload SQL block itself** (INSERT/UPDATE/COPY/...). The field name has "enable" in it, but the field is the SQL string — assigning a non-empty string both enables and supplies the before-SQL. Leave `None` for source pushdown. |
+| `before_after.before.fail_on_error` | `fail_on_error_before_sql` | `bool \| None` | `True` for target pushdown |
+| `before_after.before_node` | `enable_before_sql_node` | `str \| None` | `""` (empty string — required companion observed in the reference flow) |
+| `before_after.before_node.fail_on_error` | `fail_on_error_before_sql_node` | `bool \| None` | `True` |
+| `before_after.after` | `enable_after_sql` | `str \| None` | `""` (no after-SQL by default; set only if the user specifies one) |
+| `before_after.after_node` | `enable_after_sql_node` | `str \| None` | `""` |
+| `before_after.after.fail_on_error` | `fail_on_error_after_sql` | `bool \| None` | `True` |
+| `before_after.after_node.fail_on_error` | `fail_on_error_after_sql_node` | `bool \| None` | `True` |
+
+**The `enable_*` naming gotcha:** `enable_before_sql` and
+`enable_after_sql` are **string fields, not boolean toggles**. Assign
+the SQL workload directly to `enable_before_sql`; there is no separate
+`before_sql_statement` field — the same field both enables and stores
+the SQL.
+
+**Per-connector `read_method` enum import** (for Native mode on
+connectors that expose it):
+
+```python
+from ibm_watsonx_data_integration.services.datastage.models.enums import SNOWFLAKE
+stage.configuration.read_method = SNOWFLAKE.ReadMethod.select
+```
+
+Substitute `SNOWFLAKE` with the per-connector enum module (`DB2`,
+`ORACLE`, `BIGQUERY`, ...). Available variants typically include
+`select`, `general`, and connector-specific options.
+
+### DataStage mode (`ds_use_datastage = True`, alternative)
+
+Only applies to connectors that expose the `ds_*` family: **Snowflake,
+Apache Hive, Impala, JDBC**. Aliases begin with `_` and use
+dot-separated nesting; SDK field names are derived deterministically —
+split on `.`, strip a leading `_` from each token, join with `_`,
+prepend `ds_`. Example: `_before_after._after_sql._fail_on_error`
+→ `ds_before_after_after_sql_fail_on_error`.
+
+| Alias | SDK field name (`configuration.<name>`) | Type/value for pushdown |
+|---|---|---|
+| `_use_datastage` | `ds_use_datastage` | `True` — selects DataStage mode |
+| `_generate_sql` | `ds_generate_sql` | `False` (we provide SQL ourselves) |
+| `_select_statement` | `ds_select_statement` | source pushdown: the workload SELECT. Target pushdown: the observability SELECT (or `"SELECT 1 AS DUMMY_COL"` fallback). |
+| `_before_after` | `ds_before_after` | `True` for target pushdown; `False` for source pushdown |
+| `_before_after._before_sql` | `ds_before_after_before_sql` | target pushdown: the workload SQL block |
+| `_before_after._before_sql._fail_on_error` | `ds_before_after_before_sql_fail_on_error` | `True` (surface workload errors) |
+| `_before_after._before_sql._read_from_file_before_sql` | `ds_before_after_before_sql_read_from_file_before_sql` | `False` |
+| `_before_after._before_sql_node` | `ds_before_after_before_sql_node` | `""` |
+| `_before_after._after_sql._fail_on_error` | `ds_before_after_after_sql_fail_on_error` | `True` |
+| `_before_after._after_sql._read_from_file_after_sql` | `ds_before_after_after_sql_read_from_file_after_sql` | `False` |
+| `_auto_commit_mode` | `ds_auto_commit_mode` | leave at default (`"enable"`) |
+
+### Per-connector mode selection
+
+| Connector | Modes available | Default for pushdown |
+|---|---|---|
+| Snowflake | Native, DataStage | **Native** |
+| Apache Hive | Native, DataStage | Native |
+| Impala | Native, DataStage | Native |
+| JDBC (generic) | Native, DataStage | Native |
+| Db2 (all variants), Oracle (all variants), BigQuery, Azure Databricks, MySQL (all variants), PostgreSQL (all variants), Teradata, Microsoft SQL Server, Vertica, Greenplum, Redshift, Azure SQL / Synapse, Netezza, Sybase, SAP IQ, SingleStore, MariaDB, Informix, Exasol, Presto, Denodo, Derby, DataStax, watsonx.data | Native only (no `ds_use_datastage` flag) | Native |
+| Cassandra, MongoDB, SAP HANA, Dremio, Salesforce | **read-only**, no before-SQL — `select_statement` only | Native (source pushdown only) |
+
+### What NOT to set for pushdown
+
+In either mode, omit the following from the connector configuration:
+
+- `database_name`, `dataset_name`, `table_name`, `schema_name` —
+  table refs live inside the SQL.
+- `write_mode`, `table_action` — DataStage's row-by-row write path is
+  not used in pushdown.
+- `execution_mode` — leave at default unless the user specifies one;
+  it does not affect SQL pushdown semantics.
+
+The `read_method` field is **required** in Native mode (set it to the
+connector's `select` enum value); it was previously listed as
+"do not set" — that was wrong for Native mode.
+
+### Authoritative source for fields not in the tables above
+
+The mappings above cover the SQL pushdown subset. For fields outside
+this subset — full property reference per connector — load the stage
+model from the Python SDK package:
+
+```python
+from ibm_watsonx_data_integration.services.datastage.models import (
+    <ConnectorName>Stage,  # e.g. SnowflakeStage, Db2Stage, BigQueryStage
+)
+# Inspect fields:
+for name, fi in <ConnectorName>Stage.model_fields.items():
+    print(name, fi.alias)
+```
+
+The same data is also dumped as JSON under
+`sdk/datastage/stages/<connector>.json` in the runtime's resources tree;
+each entry's `pydantic_alias` is the alias and `name` is the SDK field
+name used by `configuration.<name>`. Do not vendor these files into the
+skill tree — load on demand from the SDK package or the runtime's
+resource path provided by the user.
