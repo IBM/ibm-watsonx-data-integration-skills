@@ -47,7 +47,7 @@ The caller passes the target engine to `create_pyflow(engine=...)`; do not decla
 | Op | DataStage | StreamSets |
 |---|---|---|
 | `q.source()` | any count | exactly one |
-| `q.output()` / `q.write()` | yes | yes |
+| `q.output()` / `q.sink()` / `q.write()` | yes | yes |
 | `.filter()`, `.sort()` | yes | yes |
 | `.lookup()` | no | yes |
 | `.tumble()` / `.slide().agg()` | no | at most one |
@@ -60,14 +60,29 @@ The caller passes the target engine to `create_pyflow(engine=...)`; do not decla
 StreamSets flows must be a single linear chain:
 
 ```
-q.source() -> [.filter() | .lookup()]* -> [.tumble()/.slide().agg()]? -> q.output() | q.write()
+q.source() -> [.filter() | .lookup()]* -> [.tumble()/.slide().agg()]? -> q.output() | q.write() | q.sink()
 ```
 
 StreamSets windowed-agg measures support only `.sum()`.
 
 ## Symbols And Bindings
 
-Strings passed to `q.source()`, `.lookup()`, and `q.write()` are local **symbols**. The caller binds each symbol to a catalog asset via `create_pyflow(bindings=...)`; symbols need not match catalog names. Every used symbol must be bound except for the symbol `dev_raw_data` since it is used for stage Dev Raw Data Source which writes raw data directly without any data asset.
+Strings passed to `q.source()`, `.lookup()`, and `q.write()` are local **symbols**. The caller binds each symbol to a data source via `create_pyflow(bindings=...)`; symbols need not match catalog names. Every used symbol must be bound except for the symbol `dev_raw_data` since it is used for stage Dev Raw Data Source which writes raw data directly without any data asset.
+
+Each binding value is one of:
+
+- **Registered data asset** — a data asset UUID, e.g. `{"<symbol>": "<data_asset_id>"}`. Resolved to its connection and schema automatically.
+- **Direct connection use** — bind straight to a table or file you found with `discover_connection_data`, even when it is *not* a registered data asset. Write it as `"<connection_id>:<path>"`, using the `path` exactly as `discover_connection_data` returned it:
+
+  ```
+  {"<symbol>": "<connection_id>:/<SCHEMA>/<TABLE>"}
+  ```
+
+  The object form `{"<symbol>": {"connection_id": "<connection_id>", "path": "/<SCHEMA>/<TABLE>"}}` is also accepted.
+
+Do **not** put column lists in the binding. For database tables the schema comes from your typed `q.source()` declarations; for files it is fetched automatically. As always, declare in `q.source()` only the columns the flow actually uses.
+
+To bind a source the user describes by connection + table (e.g. "the `<TABLE>` table in my `<database>` database"), use `discover_connection_data` to walk connection → schema → table, then bind `"<connection_id>:<path>"` — no need to register a data asset first.
 
 ## Types
 
@@ -88,6 +103,7 @@ q.source(symbol, col="type", ...) -> Frame         # kwargs form; identifier-saf
 q.source(symbol, col="type", ..., schema_metadata={...}) -> Frame  # with schema metadata (Kafka/StreamSets)
 q.name(name)                              # flow name; snake_case; exactly once — see Flow Naming below
 q.output(frame, name)                     # register final output; required name for flat-file output
+q.sink()                                  # register destination stage to discard incoming records
 q.write(frame, symbol, operation="insert")  # write final output to destination
 q.col(name) -> Expr                       # column reference
 q.count_star() -> Expr                    # count-all `[datastage]`; use in .select() or .group_by().agg()
@@ -130,6 +146,22 @@ q.name("dev_raw_to_pg_backup")
 
 # Write to target table
 q.write(source_data, "target_table", operation="insert")
+```
+
+### Sink Operations / Trash Destination Stage Handling Instructions
+
+The Trash destination is a sink that discards all incoming records. Thus, no schema is required and no data asset needs to be referenced.
+
+Pyflow Code - for example:
+
+```python
+source_data = q.source("pg_table", {"id":"i32", "name": "string"})
+
+# Name the flow
+q.name("pg_discard")
+
+# Sink to Trash
+q.sink(source_data)
 ```
 
 ### Source Schema Metadata `[streamsets]`
@@ -194,10 +226,16 @@ the frame's full data:
 q.output(frame, name="my_output")
 ```
 
-The `name` parameter is required and specifies the name of the output data asset.
+The `name` parameter is required, but the file asset is **not** simply named `{name}.csv` — the
+compiler prefixes it (`de_agent_...`) and adds a random suffix to avoid collisions. The actual
+filename is returned by `create_pyflow` in `target_info[].target_path`; use that exact string,
+not the `name` you passed in.
 
-When the flow is run, it creates or *overwrites* a CSV file asset named `{name}.csv` in the data catalog.
-Use this name to discover the asset ID, and use `read_file_data_asset` tool to retrieve the data.
+Agent-generated assets (anything matching the `de_agent_` prefix) are hidden from `list_data_assets`
+by default. To discover the asset ID for this output, call `list_data_assets` with
+`entity_name` set to the `target_path` from `create_pyflow` (or `starts:de_agent_<name>`) **and**
+`exclude_agent_generated=False` — otherwise the search returns zero results even with the
+correct name. Then use `read_file_data_asset` to retrieve the data.
 
 ### Write Operations
 
@@ -213,6 +251,7 @@ q.write(frame, "target", operation="update")     # update existing rows
 - `operation`: `"insert"` | `"overwrite"` | `"update"`.
 - `"overwrite"` truncates the table before writing, so re-running a flow is idempotent. Use it when the destination should hold exactly this run's output (datastage only).
 - Unsupported operations such as `"upsert"` are rejected; do not approximate them with insert or update.
+- The `"target"` symbol is bound like any other (see Symbols And Bindings): a registered data asset UUID, or direct connection use `"<connection_id>:/<SCHEMA>/<TABLE>"` to write straight to a connection-backed table without registering a data asset.
 - **Reading written data**: After running the flow, use the `read_connection_data_preview` tool to read data from the destination connection.
 
 ## Expression Methods
