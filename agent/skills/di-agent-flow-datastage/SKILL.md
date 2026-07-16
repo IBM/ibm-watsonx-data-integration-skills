@@ -21,6 +21,7 @@ needs something pyflow can't express.
 - **Per-stage deep-dive** → `di-agent-knowledge-engine-datastage` skill [stages/](../di-agent-knowledge-engine-datastage/stages/)
 - **Flow optimization** → `di-agent-knowledge-engine-datastage` skill [optimization/overview.md](../di-agent-knowledge-engine-datastage/optimization/overview.md)
 - **Custom stages (C/C++, Java)** → [BuildopStage.md](../di-agent-knowledge-engine-datastage/stages/BuildopStage.md), [JavaIntegrationStage.md](../di-agent-knowledge-engine-datastage/stages/JavaIntegrationStage.md)
+- **Transformer stage expressions** → `di-agent-knowledge-engine-datastage` skill resource `stages/TransformerStageFunctions/TransformerStageFunctionsOverview.md`
 
 ## Versioning
 

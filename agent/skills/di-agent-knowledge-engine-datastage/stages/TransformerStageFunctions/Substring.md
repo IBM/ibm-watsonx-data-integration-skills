@@ -101,6 +101,12 @@ Reference of builtin transfomer functions for substring manipulation of string f
 - **Usage**: `anystring SubstituteString(anystring, anystring, anystring, int8, int8, int8)`
 - **Example**: If the column mylink.mystring contains the string "123451234512345", then the following function returns the value "aa2345aa2345aa2345": SubstituteString(mylink.mystring, "1", "aa", 0, 1, 1) If the column mylink.mystring contains the string "123451234512345", then the following function returns the value "1234512345aa2345": SubstituteString(mylink.mystring, "1", "aa", 1, 1, 1) If the column mylink.mystring contains the string "123451234512345", then the following function returns the value "aa23451234512345": SubstituteString(mylink.mystring, "1", "aa", 1, 0, 1) If the column mylink.mystring contains the string "123451234512345", then the following function returns the value "12345aa234512345": SubstituteString(mylink.mystring, "1", "aa", 2, 1, 1)
 
+### Substring Extraction (`[ ]` operator)
+
+- **Description**: Extracts a substring from a string. Supports three forms: positional `string[start, length]` (extracts `length` characters from 1-based position `start`; `start` must be positive), trailing `string[length]` (extracts the last `length` characters), and delimited `string[delimiter, instance, fields]` (extracts `fields` fields starting at the `instance`-th field; bounding delimiters stripped, interim delimiters kept).
+- **Usage**: `string[start, length]` or `string[length]` or `string[delimiter, instance, fields]`
+- **Example**: `"1234567890"[3, 4]` returns `"3456"`. `"1234567890"[5]` returns `"67890"`. `"a,b,c,d"[",", 2, 2]` returns `"b,c"`.
+
 ### Substrings
 
 - **Description**: Return a substring of a string. Indexing is 0 based.

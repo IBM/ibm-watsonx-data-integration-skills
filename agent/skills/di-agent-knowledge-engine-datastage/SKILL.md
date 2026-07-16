@@ -38,3 +38,4 @@ description: Q&A reference for the DataStage parallel engine — parallelism, pa
 - [Restart and Recovery](RestartAndRecovery.md)
 - Flow optimization (partitioning, sorting, memory) → [optimization/overview.md](optimization/overview.md)
 - Per-stage semantics, requirements, best practices, and properties → [stages/](stages/)
+- [Transformer expressions](stages/TransformerStageFunctions/TransformerStageFunctionsOverview.md)
