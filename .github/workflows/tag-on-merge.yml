@@ -21,21 +21,23 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
       
       - name: Fetch source branch
+        env:
+          SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          git fetch origin ${{ github.event.pull_request.head.ref }}
+          git fetch origin "$SOURCE_BRANCH"
       
       - name: Get tag from source branch
         id: get_tag
+        env:
+          SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
-          SOURCE_SHA="${{ github.event.pull_request.head.sha }}"
-          
           echo "Source branch: $SOURCE_BRANCH"
           echo "Source SHA: $SOURCE_SHA"
           
@@ -44,11 +46,11 @@ jobs:
           
           if [ -z "$TAG" ]; then
             echo "No tag found on source branch commit, skipping"
-            echo "tag=" >> $GITHUB_OUTPUT
+            echo "tag=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Found tag: $TAG"
       
       - name: Create and push tag to main
@@ -67,9 +69,7 @@ jobs:
           fi
           
           # Create signed tag on the merge commit (current HEAD on main)
-          git tag -s -a "$TAG" -m "Release $TAG
-
-Signed-off-by: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          git tag -a "$TAG" -m $'Release '"$TAG"$'\n\nSigned-off-by: github-actions[bot] <github-actions[bot]@users.noreply.github.com>'
           git push origin "$TAG"
           
           echo "Tagged main branch with $TAG"
@@ -90,7 +90,8 @@ Signed-off-by: github-actions[bot] <github-actions[bot]@users.noreply.github.com
             });
       
       - name: Delete source branch
+        env:
+          SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
           echo "Deleting source branch: $SOURCE_BRANCH"
           git push origin --delete "$SOURCE_BRANCH" || echo "Branch already deleted or could not be deleted"
