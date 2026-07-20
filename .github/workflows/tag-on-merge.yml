@@ -77,9 +77,11 @@ Signed-off-by: github-actions[bot] <github-actions[bot]@users.noreply.github.com
       - name: Comment on PR
         if: steps.get_tag.outputs.tag != ''
         uses: actions/github-script@v9
+        env:
+          TAG: ${{ steps.get_tag.outputs.tag }}
         with:
           script: |
-            const tag = '${{ steps.get_tag.outputs.tag }}';
+            const tag = process.env.TAG;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
