@@ -86,9 +86,15 @@ Reference of builtin transfomer string field utility functions
 - **Usage**: `anystring Str(anystring:string, int32:repeats)`
 - **Example**: If mylink.mystring1 contains the string needs "choc", then the following function returns the string "chocchocchocchocchoc". Str(mylink.mystring1, 5)
 
+### String Concatenation (`:` operator)
+
+- **Description**: Concatenates two or more strings using the `:` operator.
+- **Usage**: `string1 : string2 [: string3 ...]`
+- **Example**: If X contains "Tarzan", then `"Hello. " : "My name is " : X : ". What's yours?"` evaluates to `"Hello. My name is Tarzan. What's yours?"`
+
 ### StringNumConcatenate
 
-- **Description**: Concatenate string and number
+- **Description**: Concatenate a string with the first n characters of another string
 - **Usage**: `anystring StringNumConcatenate(anystring, anystring, int16)`
 - **Example**: If mylink.string1 is "hello", and mylink.string2 is "racecar", and num is 4, then the following function returns "hellorace": StringNumConcatenate(mylink.string1, mylink.string2, num)
 
