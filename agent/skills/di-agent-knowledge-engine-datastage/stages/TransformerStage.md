@@ -106,3 +106,4 @@ transformer_1.configuration.transformer_constraint = [
 - [Vector functions](TransformerStageFunctions/Vector.md)
 - [Conditional expressions](TransformerStageFunctions/ConditionalExpressions.md)
 - [System variables](TransformerStageFunctions/SystemVariables.md)
+- [Macros](TransformerStageFunctions/Macros.md)
