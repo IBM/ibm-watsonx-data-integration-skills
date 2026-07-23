@@ -36,7 +36,7 @@ The runtime provides `q`; do not import or instantiate. Every flow:
 
 1. Declares sources with `q.source()` -- list only referenced columns, using exact names and types from asset metadata. At least one column must be provided.
 2. Calls `q.name("<snake_case_name>")` exactly once.
-3. Ends with exactly one sink: `q.output(frame)`, or `q.write(frame, "symbol", operation="insert" | "overwrite" | "update")` when writing to a destination asset.
+3. Ends with exactly one sink: `q.output(frame)`, or `q.write(frame, "symbol", operation="insert" | "overwrite" | "update" | "create")` when writing to a destination asset. `operation="create"` is DataStage-only.
 
 Code must contain no imports or `print()`.
 
@@ -67,7 +67,7 @@ StreamSets windowed-agg measures support only `.sum()`.
 
 ## Symbols And Bindings
 
-Strings passed to `q.source()`, `.lookup()`, and `q.write()` are local **symbols**. The caller binds each symbol to a data source via `create_pyflow(bindings=...)`; symbols need not match catalog names. Every used symbol must be bound except for the symbol `dev_raw_data` since it is used for stage Dev Raw Data Source which writes raw data directly without any data asset.
+Strings passed to `q.source()`, `.lookup()`, and `q.write()` are local **symbols**. The caller binds each symbol to a data source via `create_pyflow(bindings=...)`; symbols need not match catalog names. Every used symbol must be bound.
 
 Each binding value is one of:
 
@@ -82,7 +82,15 @@ Each binding value is one of:
 
 Do **not** put column lists in the binding. For database tables the schema comes from your typed `q.source()` declarations; for files it is fetched automatically. As always, declare in `q.source()` only the columns the flow actually uses.
 
-To bind a source the user describes by connection + table (e.g. "the `<TABLE>` table in my `<database>` database"), use `discover_connection_data` to walk connection → schema → table, then bind `"<connection_id>:<path>"` — no need to register a data asset first.
+### Resolving a binding — prefer data assets
+
+When you need to bind a symbol to a data source, **always try `list_data_assets` first** before walking any connection:
+
+1. Call `list_data_assets(project_id=<project>, entity_name="<table or file name>")`.
+2. If a matching asset is returned, use its UUID as the binding — `{"<symbol>": "<data_asset_id>"}`. The compiler resolves the connection and schema automatically; skip `discover_connection_data` entirely.
+3. **Only if `list_data_assets` returns no match** (the table is not a registered project asset) should you fall back to `discover_connection_data`: walk the relevant connection (connection → schema → table) and bind `"<connection_id>:/<SCHEMA>/<TABLE>"`.
+
+This order matters: data asset bindings carry richer metadata, are faster to resolve at compile time, and avoid unnecessary connection traversal. Use `discover_connection_data` only as a last resort when no data asset exists for the source.
 
 ## Types
 
@@ -104,7 +112,7 @@ q.source(symbol, col="type", ..., schema_metadata={...}) -> Frame  # with schema
 q.name(name)                              # flow name; snake_case; exactly once — see Flow Naming below
 q.output(frame, name)                     # register final output; required name for flat-file output
 q.sink()                                  # register destination stage to discard incoming records
-q.write(frame, symbol, operation="insert")  # write final output to destination
+q.write(frame, symbol, operation="insert"|"overwrite"|"update"|"create")  # write final output to destination
 q.col(name) -> Expr                       # column reference
 q.count_star() -> Expr                    # count-all `[datastage]`; use in .select() or .group_by().agg()
 q.cast(value, type) -> Expr               # typed literal or expr cast; null: q.cast(None, "f64")
@@ -113,39 +121,6 @@ q.concat(*exprs) -> Expr                  # string concat; 2+ args
 q.date_diff(d1, d2) -> Expr               # day difference as i64
 q.strptime_time(expr, fmt) -> Expr        # string -> temporal; fmt is a strftime-style format
 q.strftime(expr, fmt, tz?) -> Expr        # temporal -> string; tz is an IANA name
-```
-
-### Dev Raw Data Source Handling Instructions
-
-1.  If the user specifies that the source is "Dev Raw Data Source":
-    *   The table_name passed to q.source() must be "dev_raw_data".
-    *   The user request must include the following fields:
-        a.  raw_data
-        b.  data_format
-2.  If either raw_data or data_format is missing:
-    *   Prompt the user explicitly to provide these fields.
-    *   These are required to derive the schema using the get_dev_raw_data_schema MCP tool.
-3.  Schema derivation rules:
-    *   Use up to the first 10 records from raw_data to infer the schema. If fewer than 10 records are available, use all of them.
-4.  Supported values for data_format:
-    *   "JSON"
-    *   "Delimited"
-    *   "Avro JSON"
-5.  If the user provides any unsupported data_format:
-    *   Immediately ask the user to choose one of the supported formats listed above.
-
-Pyflow Code - for example:
-
-```python
-# Source: Dev Raw Data Source (schema to be derived from the raw_data in the request using get_dev_raw_data_schema tool)
-# Note: get_dev_raw_data_schema only gets you schema for Source, for schema of target, you need to use inspect_project_asset tool
-source_data = q.source("dev_raw_data", {"id":"i32", "name": "string"})
-
-# Name the flow
-q.name("dev_raw_to_pg_backup")
-
-# Write to target table
-q.write(source_data, "target_table", operation="insert")
 ```
 
 ### Sink Operations / Trash Destination Stage Handling Instructions
@@ -246,13 +221,46 @@ q.write(frame, "target")                         # same as operation="insert"
 q.write(frame, "target", operation="insert")     # append rows
 q.write(frame, "target", operation="overwrite")  # replace the table's contents
 q.write(frame, "target", operation="update")     # update existing rows
+q.write(frame, "target", operation="create")     # create a new (non-existent) table from the frame's schema
 ```
 
-- `operation`: `"insert"` | `"overwrite"` | `"update"`.
+- `operation`: `"insert"` | `"overwrite"` | `"update"` | `"create"`.
+- `"create"` is supported only on DataStage targets.
 - `"overwrite"` truncates the table before writing, so re-running a flow is idempotent. Use it when the destination should hold exactly this run's output (datastage only).
 - Unsupported operations such as `"upsert"` are rejected; do not approximate them with insert or update.
 - The `"target"` symbol is bound like any other (see Symbols And Bindings): a registered data asset UUID, or direct connection use `"<connection_id>:/<SCHEMA>/<TABLE>"` to write straight to a connection-backed table without registering a data asset.
 - **Reading written data**: After running the flow, use the `read_connection_data_preview` tool to read data from the destination connection.
+
+#### Create Operation Behavior
+
+When using `operation="create"` on DataStage:
+
+1. **Table doesn't exist**: The table will be created with the schema inferred from the frame's columns
+2. **Table already exists**: Do not use `operation=create` with an existing table.
+3. **Binding requirement**: Must use a direct connection binding (`"connection_id:/SCHEMA/TABLE"`) 
+   rather than a data asset ID, since the table doesn't exist in the catalog yet
+
+**Example**:
+```python
+# Create a new table from source data
+source = q.source("input_table", id="i64", name="string", amount="f64")
+q.name("create_new_table_flow")
+
+# Use direct connection binding for non-existent table
+q.write(source, "new_table", operation="create")
+
+# In bindings:
+bindings = {
+    "input_table": "existing-asset-id-123",
+    "new_table": "connection-id-456:/MYSCHEMA/NEW_TABLE"  # Direct connection binding
+}
+```
+
+**Schema Inference**:
+- Column names and types come from the frame's schema
+- Primary keys, indexes, and constraints are NOT automatically created
+- For advanced table creation options, create the table manually first, then use `operation="insert"`
+```
 
 ## Expression Methods
 
@@ -267,6 +275,8 @@ Operators return `Expr`, not Python bools. Use `&`/`|`/`~`, never `and`/`or`/`no
 ```python
 .alias(name)                              # snake_case
 .cast(type)                               # q.col("x").cast("i32")
+.precision(n)                             # numeric precision hint for output columns; int only
+.scale(n)                                 # numeric scale hint for output columns; int only
 .sum()                                    # aggregate; both engines
 .mean()/.avg() .count() .min() .max()     # aggregates; `[datastage]` only
 .rank() .dense_rank() .row_number()       # window functions; `[datastage]` only; see Partitioning section
@@ -274,6 +284,28 @@ Operators return `Expr`, not Python bools. Use `&`/`|`/`~`, never `and`/`or`/`no
 .is_null() .is_not_null()                 # null checks -> boolean;
 .asc() .desc()                            # sort direction only
 .nulls_first() .nulls_last()              # nulls position in sort
+```
+
+`.precision(n)` and `.scale(n)` are chainable in any order and only take effect on `f64`/`numeric`/`decimal`/`double` columns flowing into a `q.output()` or `q.write()` node. Columns without explicit annotations fall back to the engine default. Placing them mid-pipeline is harmless — annotations are carried through but ignored until the output boundary.
+
+```python
+# per-column precision and scale on an output
+q.output(
+    frame.with_columns(
+        q.col("amount").precision(18).scale(4),
+        q.col("rate").precision(10).scale(6),
+    ),
+    name="result",
+)
+
+# same on a write destination
+q.write(
+    frame.with_columns(
+        q.col("amount").precision(18).scale(4),
+    ),
+    "target_table",
+    operation="insert",
+)
 ```
 
 ### Conditional
@@ -508,4 +540,63 @@ q.output(
     .filter(q.col("sales_rank") <= 10),  # top 10 per category
     name="top_products_output"
 )
+```
+
+## Stage Configuration `[streamsets]`
+
+Operations support an optional `configs` parameter to pass engine-specific configuration to the underlying stage. Configs are only applied for StreamSets flows; DataStage ignores them.
+
+```python
+q.source(symbol, col="type", ..., configs={"key": "value"})
+q.write(frame, symbol, operation="insert", configs={"key": "value"})
+frame.filter(expr, configs={"key": "value"})
+frame.select(..., configs={"key": "value"})
+frame.with_columns(..., configs={"key": "value"})
+frame.sort(..., configs={"key": "value"})
+frame.lookup(symbol, {...}, on=, configs={"key": "value"})
+frame.tumble(length, configs={"key": "value"}).agg(...)
+frame.slide(length, configs={"key": "value"}).agg(...)
+```
+
+**Rules:**
+- `configs` must be a dict with string keys and JSON-serializable values (str, int, float, bool, None, list, dict)
+- Reserved keys cannot be used: `stageType`, `instanceName`, `stageName`, `uiInfo`, `inputLanes`, `outputLanes`, `eventLanes`, `services`, `configuration`
+- Configs are merged into the StreamSets stage configuration after standard properties are set
+- Invalid configs raise `ConfigValidationError` during compilation
+
+**Examples:**
+
+```python
+# Source with batch size config
+orders = q.source("orders_kafka",
+                  order_id="i64",
+                  amount="f64",
+                  configs={"batchSize": 1000, "maxWaitTime": 5000})
+
+# Write with custom buffer settings
+q.write(result, "target_db",
+        operation="insert",
+        configs={"batchSize": 500, "connectionTimeout": 30})
+
+# Filter with processing hints
+filtered = orders.filter(
+    q.col("amount") > 100,
+    configs={"enableMetrics": True}
+)
+
+# Lookup with cache configuration
+enriched = orders.lookup(
+    "customers",
+    {"cust_id": "i64", "name": "string"},
+    on="cust_id",
+    configs={"cacheSize": 10000, "cacheTTL": 3600}
+)
+
+# Window with custom watermark
+windowed = events.tumble(
+    "15m",
+    group_by="region",
+    on="ts",
+    configs={"allowedLateness": "5m"}
+).agg(q.col("amount").sum().alias("revenue"))
 ```
