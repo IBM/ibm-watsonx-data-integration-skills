@@ -9,26 +9,71 @@ description: "API spec for pyflow, IBM's LLM-optimized Python DSL for authoring 
 
 Pyflow is *declarative* intent; the pyflow compiler lowers the DSL to an engine-specific *imperative* flow, producing an optimized physical plan for what you declare.
 
-**For new flows, always author with pyflow — it is the only way to create one.** The SDK surface can only update flows that already exist; there is no tool for creating a flow from SDK code. Beyond that, the compiler validates your flow and gives detailed compile-time feedback, guarantees correctness, and sets up connection metadata for you — all at a fraction of the tokens of the SDK. The result is a pyflow-native flow that round-trips cleanly for later edits.
-
 **Pyflow's value is building structure** — sources, joins, filters, and the wiring between them — the expensive, error-prone part to hand-author in the SDK. Expressions and stage properties are cheap to add in the SDK *once the structure exists*. So the editing question is never "can pyflow express the whole flow?" but "does this change touch structure?"
+
+**Flow creation via Pyflow is the default entry-point** - the Pyflow compiler validates your flow and gives detailed compile-time feedback, guarantees a flow that compiles, and sets up connection metadata for you. The result is a pyflow-native flow that round-trips cleanly for later edits. 
+
+### Recommended Workflow
+
+Always create flows with Pyflow whenever possible and only use `create_datastage_flow` under the following strict circumstances:
+1. The user explicitly expresses that they want to use SDK code
+2. Stages that are not supported by Pyflow are explicitly requested (see the section below called "Pyflow Supported Stages" as well as the [SDK skill](../di-agent-flow-datastage/references/sdk-conventions.md) for a list of SDK-supported stages)
+3. The user cannot or refuses to specify data sources upfront (e.g. the user wants the flow to generate mock data rather than connecting a database). Pyflow requires data first.
+4. Multiple file assets are expected as output from a single flow
+5. create_pyflow fails more than 5 times
+
+General Workflow:
+1. Bootstrap the structure in pyflow — sources, filters, joins, wiring.
+2. Call `retrieve_datastage_flow_code` to generate the SDK code
+3. Precision-edit the SDK code to add what pyflow couldn't express, such as property and schema configuration
+
+**SDK code is verbose** — manual node linking, schema propagation, and both visible and hidden properties. Writing structure from scratch without a working reference is highly error-prone; pyflow generates it correctly wired, leaving only small, local edits.
+
+### Pyflow Supported Stages
+
+#### DataStage
+
+| SDK Stage Type | Pyflow Ops |
+|---|---|
+| `Transformer` | `.filter()`, `.select()`, `.with_columns()`, `.partition_by().select()` |
+| `Sort` | `.sort()` |
+| `Join` | `.join()`, `.cross()`, `.intersect()` |
+| `Aggregator` | `.group_by().agg()` |
+| `Head` | `.head()`, `.fetch()` |
+| `Remove Duplicates` | `.unique()` |
+| `Funnel` | `.union()` |
+| `Copy` | *(internal fan-out)* |
+| `Sequential file` | `q.source()` (asset file), `q.output()`, `q.sink()` |
+| `Amazon S3` | `q.source()`, `q.write()` |
+| `IBM Cloud Object Storage` | `q.source()`, `q.write()` |
+| `Microsoft Azure Blob Storage` | `q.source()`, `q.write()` |
+| `IBM watsonx.data Presto` | `q.write()` |
+| *(Any Other Connection - without special handling)* | `q.source()`, `q.write()` |
+
+#### StreamSets
+
+| SDK Stage Type | Pyflow Ops |
+|---|---|
+| `Expression Evaluator` | `.filter()` |
+| `Field Renamer` | `.select()`, `.with_columns()` |
+| `JavaScript Evaluator` | `.sort()` |
+| `JDBC Lookup` | `.lookup()` |
+| `Windowing Aggregator` | `.tumble().agg()`, `.slide().agg()` |
+| `Trash` | `q.sink()` |
+| `Kafka Multitopic Consumer` / `Kafka Producer` | `q.source()`, `q.write()`|
+| `JDBC Multitable Consumer` / `JDBC Producer` | `q.source()`, `q.write()` |
+| `IBM Db2` | `q.source()`, `q.write()` |
+| `Oracle Multitable Consumer` / `Oracle` | `q.source()`, `q.write()` |
+| `MongoDB Atlas` | `q.source()`, `q.write()` |
+| `Snowflake Bulk` / `Snowflake` | `q.source()`, `q.write()` |
+| `Amazon S3` | `q.source()`, `q.write()` |
+| `Azure Blob Storage` | `q.source()`, `q.write()` |
 
 ### Editing an existing flow
 
 - **Adds or alters structure** (a new source, a join, a different shape) -> bootstrap that structure in pyflow, then precision-edit anything pyflow can't express — an expression, a property, even an extra custom / Buildop / Java stage — onto the generated SDK. Pyflow wires the backbone reliably; you splice the rest in after.
 - **Only expressions or properties on existing structure**, no new wiring -> edit the retrieved SDK in place.
 - **The core shape has no faithful pyflow form**, so a bootstrap would yield a scaffold you'd have to *rewire* rather than add to -> bootstrap the closest shape pyflow can produce, then reshape the generated SDK via `update_datastage_flow`. A missing stage alone never qualifies as "no pyflow form", since stages splice in after (above).
-
-**Do not abandon pyflow because one function or stage isn't supported.** A flow that needs, say, a regex extraction pyflow lacks still starts in pyflow: bootstrap the sources, filter, and join, then splice the missing piece into the generated SDK. Hand-authoring a new join or source from scratch is the SDK's least reliable path — never do it when pyflow can scaffold it.
-
-### Recommended Workflow
-
-1. Read the existing SDK — capture anything you must preserve (an exact expression, a stage's settings).
-2. Bootstrap the structure in pyflow — sources, filters, joins, wiring.
-3. Read the generated SDK.
-4. Precision-edit it to add what pyflow couldn't express.
-
-**SDK code is verbose** — manual node linking, schema propagation, and both visible and hidden properties. Writing structure from scratch without a working reference is highly error-prone; pyflow generates it correctly wired, leaving only small, local edits.
 
 ## Code Anatomy
 
@@ -210,7 +255,7 @@ Agent-generated assets (anything matching the `de_agent_` prefix) are hidden fro
 by default. To discover the asset ID for this output, call `list_data_assets` with
 `entity_name` set to the `target_path` from `create_pyflow` (or `starts:de_agent_<name>`) **and**
 `exclude_agent_generated=False` — otherwise the search returns zero results even with the
-correct name. Then use `read_file_data_asset` to retrieve the data.
+correct name. Then use `read_file_asset_preview` to retrieve the data.
 
 ### Write Operations
 

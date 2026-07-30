@@ -9,9 +9,11 @@ Existing DataStage batch flows are edited by writing SDK-style Python code and
 submitting via `update_datastage_flow`. Auth, project context, persistence, and
 compilation are handled automatically.
 
-New flows cannot be created through the SDK surface: create them with pyflow
-(`di-agent-flow-pyflow` / `create_pyflow`), then edit in place here when a change
-needs something pyflow can't express.
+New flows should be created by pyflow (`di-agent-flow-pyflow` / `create_pyflow`) in almost every case 
+and later updated with SDK code (`update_datastage_flow`) to add engine-specific details. However, if the 
+intended flow contains stages that are unsupported by Pyflow, lacks data sources upfront, or `create_pyflow` 
+fails repeatedly, you may create the flow with SDK code using the `create_datastage_flow` tool. Only create 
+the flow with SDK code if pyflow cannot. 
 
 ## Where to look
 
@@ -29,7 +31,7 @@ Use `duplicate_asset(asset_id=..., asset_type="datastage_flow", project_id=...)`
 
 **Editing an existing flow:** In-place SDK edit is the right tool when the change is confined to expressions or stage properties on structure that already exists — retrieve the flow with `retrieve_datastage_flow_code`, change that SDK, and resubmit via `update_datastage_flow`. You are perturbing validated, already-wired code, so this is reliable, lossless, and cheap.
 
-> **Edit the retrieved code — never hand-author a fragment.** Your `update_datastage_flow` submission must be the *complete* SDK returned by `retrieve_datastage_flow_code` with your additions spliced in, not a standalone snippet. Every stage, link, and schema you reference must be defined as a variable earlier in the same submission (the retrieved code already defines them — `derive_seg`, `veh_in`, `fp`, etc. — so reuse those variable names). The flattened SDK grammar has **no way to fetch existing elements**: `project.flows.get(...)`, `flow.links["x"]`, `flow.stages["y"]`, and `link.schema` are all rejected as "Unsupported statement type" / "variable does not exist". To add a column to an existing link, edit that link's existing `create_schema()`/`add_field(...)` lines in the retrieved code; to add structure, append new `flow.add_stage(...)` / `stage.connect_output_to(...)` / `link.create_schema()` statements that reference the already-defined variables. If a submission fails validation, fix the *whole* resubmitted code; do not re-fetch elements or re-author from scratch.
+> **Edit the retrieved code — never hand-author a fragment.** Your `update_datastage_flow` submission must be the *complete* SDK returned by `retrieve_datastage_flow_code` with your additions spliced in, not a standalone snippet. Every stage, link, and schema you reference must be defined as a variable earlier in the same submission (the retrieved code already defines them — `derive_seg`, `veh_in`, `fp`, etc. — so reuse those variable names). The flattened SDK grammar has **no way to fetch existing elements**: `flow.links["x"]`, `flow.stages["y"]`, and `link.schema` are all rejected as "Unsupported statement type" / "variable does not exist". To add a column to an existing link, edit that link's existing `create_schema()`/`add_field(...)` lines in the retrieved code; to add structure, append new `flow.add_stage(...)` / `stage.connect_output_to(...)` / `link.create_schema()` statements that reference the already-defined variables. If a submission fails validation, fix the *whole* resubmitted code; do not re-fetch elements or re-author from scratch.
 
 If the change instead adds or alters structure — a new source, a join, a different shape — do NOT hand-author it here from scratch; that is the SDK's least reliable path. Bootstrap the new structure in pyflow (`di-agent-flow-pyflow`), then precision-edit the generated SDK to add anything pyflow can't express — an unsupported function, or an extra stage spliced in. If the core shape has no faithful pyflow form, bootstrap the closest shape pyflow can produce, then reshape it here via `update_datastage_flow`.
 
@@ -46,6 +48,6 @@ Backups are optional and cost tool calls — only duplicate as a rollback point 
 - **Fetch flows by `flow_id`**, never by name — name returns incomplete stage data
 - **Never guess stage types, property names, or enum values** — use `recommend_datastage_stages` / `datastage_property_lookup`
 - **Bundle all changes into a single submission** — successive submissions overwrite each other
-- **`update_datastage_flow` never creates** — it errors if the named flow doesn't exist; verify the name via `list_datastage_flows`, and create new flows with pyflow
+- **`update_datastage_flow` never creates** — it errors if the named flow doesn't exist; verify the name via `list_datastage_flows` and create the flow first
 - **After a successful update**, surface the returned `flow_link` from the tool result as a clickable link so the user can open the flow in the UI
 - **Stage property names in prose** — use the `User friendly name` from `datastage_property_lookup` (e.g. "Number of rows (per partition)"), not the internal identifier (`nrecs`); show the internal name only in code blocks or when the user asks for the SDK property
