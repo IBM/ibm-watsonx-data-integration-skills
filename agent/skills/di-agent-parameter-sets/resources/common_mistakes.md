@@ -46,7 +46,7 @@
 
 **What happens:** The existing parameters are deleted. The `parameters` argument is a full replacement list, not a merge.
 
-**Fix:** Always call `get_parameter_set` first, copy the existing `parameters` list, append or modify your changes, then submit the full list.
+**Fix:** The tool checks for you — it returns an error listing the parameters that would be removed and asks you to either include them or pass `confirm_replacement=True`. But to be safe, always fetch first and merge your changes into the full list before submitting.
 
 ---
 
@@ -56,10 +56,11 @@
 
 **What happens:** The API deletes the asset. At runtime, the DataStage compiler cannot resolve the references — the job fails silently or raises a compilation error on the next publish.
 
-**Fix:** Before deleting:
-1. Retrieve each suspected flow definition and search stage property strings for `#setName.param#` patterns to confirm which flows use the set. *(A dedicated `get_flow_parameter_references` tool is planned for a future milestone.)*
-2. Remove the references from those flows (`update_datastage_flow`).
-3. Then delete the set.
+**Fix:** `delete_parameter_set` already lists attached flows in its confirmation prompt — read that list rather than deleting blind. To check a specific flow yourself, before deleting:
+1. Call `get_flow_parameter_references(flow_id=..., project_id=...)` on each suspected flow to check whether the set is registered in `external_paramsets`.
+2. That covers registration only. If the answer has to be exhaustive, also retrieve each flow via `retrieve_datastage_flow_code` and search stage property strings for `#SetName.ParamName#` — expression references can outlive the registration.
+3. Remove the references from those flows (`update_datastage_flow`).
+4. Then delete the set.
 
 ---
 
