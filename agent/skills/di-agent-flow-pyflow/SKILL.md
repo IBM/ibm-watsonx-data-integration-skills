@@ -137,6 +137,53 @@ When you need to bind a symbol to a data source, **always try `list_data_assets`
 
 This order matters: data asset bindings carry richer metadata, are faster to resolve at compile time, and avoid unnecessary connection traversal. Use `discover_connection_data` only as a last resort when no data asset exists for the source.
 
+### Local Parameters `[datastage]`
+
+A direct connection binding path may contain DataStage local-parameter tokens in the form `#name#`. At job runtime DataStage substitutes each token with the parameter's current value, so the same compiled flow can read from or write to different tables without being recompiled.
+
+Pass `parameters` to `create_pyflow` to declare each token and its default value:
+
+```python
+# DSL code — symbols are unchanged
+orders = q.source("orders", id="i64", amount="f64")
+q.name("parameterized_table_flow")
+q.write(orders, "target", operation="insert")
+```
+
+```python
+# create_pyflow call
+bindings = {
+    "orders": "conn-id:/MYSCHEMA/#src_table#",
+    "target": "conn-id:/MYSCHEMA/#tgt_table#",
+}
+parameters = {
+    "src_table": "ORDERS_2024",    # default value
+    "tgt_table": "ORDERS_ARCHIVE", # default value
+}
+```
+
+Rules:
+- `parameters` is **DataStage-only**; passing it with `engine="streamsets"` raises an error.
+- Every `#token#` that appears in any binding path **must** have a matching key in `parameters`. Missing entries are rejected at compile time.
+- The default value may be an empty string if no sensible default exists.
+- `parameters` keys that do not appear in any binding path are still registered on the flow and can be used in stage expressions via the SDK.
+- Do **not** use `#token#` in data-asset UUID bindings — tokens are only meaningful inside direct connection paths.
+
+**Overriding at runtime** — pass `runtime_parameters` to `create_job_run` without recompiling:
+
+```python
+create_job_run(
+    job_ids=["<job_id>"],
+    project_id="<project_id>",
+    runtime_parameters={
+        "local_parameters": {
+            "src_table": "ORDERS_2025",
+            "tgt_table": "ORDERS_ARCHIVE_2025",
+        }
+    }
+)
+```
+
 ## Types
 
 ```

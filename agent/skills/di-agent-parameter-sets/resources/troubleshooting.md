@@ -83,7 +83,7 @@ For a permanent fix, remove the parameter references from the flows instead.
 
 **Root cause:** `parameters` is a full replacement list. If you passed only the new parameters, the existing ones were dropped.
 
-**Fix:** Always fetch the current state first:
+**Fix:** The tool guards against this automatically — if your submitted list would remove existing parameters it returns an error naming the affected parameters and requires you to either include them or pass `confirm_replacement=True`. To avoid hitting the guard, fetch the current state first and merge your additions before submitting:
 ```
 get_parameter_set(parameter_set_id=..., project_id=...)
 ```
