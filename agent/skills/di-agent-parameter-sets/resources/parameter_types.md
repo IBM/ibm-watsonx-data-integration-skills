@@ -36,7 +36,8 @@ The `type` field of a parameter definition determines how the value is stored an
   "value":        "localhost",     // optional default value
   "description":  "DB hostname",   // optional free-text description
   "prompt":       "Database host", // optional UI label
-  "valid_values": []               // required only for enum/list
+  "valid_values": [],              // required only for enum/list
+  "subtype":      "envvar"         // optional — see Environment Variable Subtype below
 }
 ```
 

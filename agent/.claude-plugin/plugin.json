@@ -1,17 +1,21 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "ibm-agentic-data-integration",
-  "owner": {
-    "name": "IBM"
+  "displayName": "IBM Agentic Data Integration",
+  "description": "Build, run, and operationalize data flows in IBM watsonx.data integration. Describe your data requirements in natural language and let the agent plan, build, validate, and run the flow.",
+  "author": {
+    "name": "IBM",
+    "url": "https://github.com/IBM"
   },
-  "plugins": [
-    {
-      "name": "ibm-agentic-data-integration",
-      "source": ".",
-      "description": "Agentic Data Integration skills for Claude to build, run, and operationalize data flows in IBM watsonx.data integration",
-      "version": "0.1.0",
-      "author": {
-        "name": "IBM"
-      }
-    }
+  "homepage": "https://www.ibm.com/docs/en/watsonx/wdi/saas?topic=integration-agentic-data",
+  "repository": "https://github.com/IBM/ibm-watsonx-data-integration-skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "ibm",
+    "watsonx",
+    "data-integration",
+    "datastage",
+    "etl",
+    "data-flows"
   ]
 }
