@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "ibm-watsonx-data-integration",
+  "description": "IBM watsonx.data integration skills and MCP tools for AI agents",
+  "owner": {
+    "name": "IBM",
+    "url": "https://github.com/IBM/ibm-watsonx-data-integration-skills"
+  },
+  "plugins": [
+    {
+      "name": "ibm-agentic-data-integration",
+      "source": "./agent",
+      "displayName": "IBM Agentic Data Integration",
+      "description": "Build, run, and operationalize data flows in IBM watsonx.data integration. Describe your data requirements in natural language and let the agent plan, build, validate, and run the flow.",
+      "category": "data",
+      "keywords": [
+        "ibm",
+        "watsonx",
+        "data-integration",
+        "datastage",
+        "etl",
+        "data-flows"
+      ]
+    }
+  ]
+}
