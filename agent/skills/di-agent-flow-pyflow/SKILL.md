@@ -123,8 +123,6 @@ Each binding value is one of:
   {"<symbol>": "<connection_id>:/<SCHEMA>/<TABLE>"}
   ```
 
-  The object form `{"<symbol>": {"connection_id": "<connection_id>", "path": "/<SCHEMA>/<TABLE>"}}` is also accepted.
-
 Do **not** put column lists in the binding. For database tables the schema comes from your typed `q.source()` declarations; for files it is fetched automatically. As always, declare in `q.source()` only the columns the flow actually uses.
 
 ### Resolving a binding — prefer data assets
@@ -164,7 +162,7 @@ parameters = {
 
 Rules:
 - `parameters` is **DataStage-only**; passing it with `engine="streamsets"` raises an error.
-- Every `#token#` that appears in any binding path **must** have a matching key in `parameters`. Missing entries are rejected at compile time.
+- Every `#token#` that appears in any binding path **must** have a matching key in `parameters`, **unless it is a DataStage macro** (see next section). Missing non-macro entries are rejected at compile time.
 - The default value may be an empty string if no sensible default exists.
 - `parameters` keys that do not appear in any binding path are still registered on the flow and can be used in stage expressions via the SDK.
 - Do **not** use `#token#` in data-asset UUID bindings — tokens are only meaningful inside direct connection paths.
@@ -183,6 +181,116 @@ create_job_run(
     }
 )
 ```
+
+### Parameter Sets `[datastage]`
+
+A **parameter set** is a project-level asset that groups named parameters together. In binding paths, parameter-set parameters are referenced using a **dotted token**: `#setname.paramname#`. The dot between the set name and the parameter name is what distinguishes a parameter-set reference from a local parameter (`#name#`, no dot).
+
+Unlike local parameters, parameter sets are **not declared in `parameters`** — `create_pyflow` detects every `#setname.paramname#` token in the bindings automatically, validates that the set and each referenced parameter exist in the project, and attaches the set to the compiled flow.
+
+**The parameter set must already exist before calling `create_pyflow`.** Use `create_parameter_set` to create it first, then `list_parameter_sets` to confirm the name.
+
+```python
+# DSL code — unchanged from any other flow
+orders = q.source("orders", id="i64", amount="f64")
+q.name("env_paramset_flow")
+q.write(orders, "target", operation="insert")
+```
+
+```python
+# create_pyflow call — no 'parameters' argument needed for the set
+bindings = {
+    "orders": "conn-id:/#EnvParams.SCHEMA#/#EnvParams.SRC_TABLE#",
+    "target": "conn-id:/#EnvParams.SCHEMA#/ORDERS_ARCHIVE",
+}
+# EnvParams is a project parameter set with at least SCHEMA and SRC_TABLE parameters.
+# No entry in 'parameters' is needed — the tool handles everything automatically.
+```
+
+Mixing parameter sets with local parameters in the same flow is supported:
+
+```python
+bindings = {
+    "orders": "conn-id:/#EnvParams.SCHEMA#/#src_table#",
+    "target": "conn-id:/#EnvParams.SCHEMA#/ORDERS_OUT",
+}
+parameters = {
+    "src_table": "ORDERS_2024",   # local parameter — must be declared here
+    # EnvParams is a parameter set — do NOT add its params here
+}
+```
+
+**Overriding at runtime** — select a named value set or override individual parameters via `create_job_run` without recompiling:
+
+```python
+create_job_run(
+    job_ids=["<job_id>"],
+    project_id="<project_id>",
+    runtime_parameters={
+        "parameter_sets": [
+            {
+                "name": "EnvParams",
+                "value_set": "prod",   # switch to the 'prod' value set
+            }
+        ]
+    }
+)
+```
+
+Rules:
+- Parameter-set tokens (`#setname.paramname#`) are **DataStage-only** — using them with `engine="streamsets"` raises an error.
+- Both the set name and the parameter name must be valid identifiers (`[A-Za-z_]\w*`). Invalid names are rejected at compile time.
+- The parameter set **must exist** in the project before calling `create_pyflow`. Missing sets or misspelled parameter names are rejected at compile time with a descriptive error listing what is available.
+- **Do not** add parameter-set parameter names to `parameters`. The dotted syntax (`#set.param#`) is how the tool tells them apart from local parameters (`#name#`).
+- Multiple parameter sets may be referenced in a single flow — all are validated and attached.
+- Parameter-set tokens can be freely combined with local parameters (`#name#`) in the same binding path.
+
+### DataStage Macros `[datastage]`
+
+DataStage **macros** are built-in global parameters whose values are resolved automatically by the parallel engine at job start — they do not require any entry in `parameters`. Use them in direct connection binding paths the same way as local parameters (with `#…#` delimiters), but **never** add them to the `parameters` map.
+
+```python
+# DSL code — unchanged
+orders = q.source("orders", id="i64", amount="f64")
+q.name("macro_demo_flow")
+q.write(orders, "target", operation="insert")
+```
+
+```python
+# create_pyflow call — no entry in parameters for the macro
+bindings = {
+    "orders": "conn-id:/MYSCHEMA/#DSProjectName#_ORDERS",
+    "target": "conn-id:/MYSCHEMA/#tgt_table#",
+}
+parameters = {
+    "tgt_table": "ORDERS_ARCHIVE",  # local parameter — must be declared
+    # Do NOT add DSProjectName here — it is a macro, not a local parameter
+}
+```
+
+**Available macros:**
+
+| Macro | Value injected at runtime |
+|---|---|
+| `#DSFlowName#` | Name of the DataStage flow |
+| `#DSHostName#` | Hostname of the engine tier |
+| `#DSJobName#` | Name of the job |
+| `#DSJobStartDate#` | Job start date (`YYYY-MM-DD`) |
+| `#DSJobStartTime#` | Job start time (`HH:MM:SS`) |
+| `#DSJobStartTimestamp#` | Job start date and time combined |
+| `#DSJobWaveNo#` | Wave (invocation) number of the current job run |
+| `#DSProjectName#` | Name of the DataStage project |
+| `#DSProjectDirectory#` | Filesystem path of the project directory on the engine |
+| `#DSProjectId#` | Unique ID of the DataStage project |
+| `#DSJobRunId#` | Unique ID of the current job run |
+| `#DSJobId#` | Unique ID of the job |
+| `#DSJobController#` | Hostname of the job controller process |
+
+Rules:
+- Macros are **DataStage-only** — they have no meaning on StreamSets.
+- Do **not** declare macro names in `parameters`. The validator will accept them without a declaration and will raise an error if you try to declare one (it would be ignored at runtime anyway).
+- Macros can be combined with local-parameter tokens in the same path, e.g. `"conn-id:/#DSProjectName#/#src_table#"`.
+- Macro names are **case-sensitive** — use the exact capitalisation shown in the table above.
 
 ## Types
 
