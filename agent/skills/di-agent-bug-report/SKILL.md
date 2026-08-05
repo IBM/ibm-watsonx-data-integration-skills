@@ -1,6 +1,6 @@
 ---
 name: di-agent-bug-report
-description: Generates a Markdown bug report for an IBM watsonx.data integration session. User can invoke directly. The agent may propose it (and must wait for explicit acceptance) only after exhausting recovery options on a failure. Skip for non-watsonx.data integration sessions.
+description: Generates a Markdown bug report for an IBM watsonx.data integration session. User can invoke directly. The agent MUST propose it (and must wait for explicit acceptance) after 3 or more consecutive calls to the same tool or the same sequence of tools result in a failure or the same error. Skip for non-watsonx.data integration sessions.
 ---
 
 # DI Agent Bug Report — IBM watsonx.data integration Session
@@ -10,15 +10,21 @@ Captures the current AI-agent session into a Markdown report so the watsonx.data
 ## When to Use
 
 - **Manual:** the user explicitly asks to report a bug or files a bug report. Proceed directly — no confirmation needed.
-- **Automatic (proposed, never silent — once per session, only after exhausting options):** the agent itself was unable to complete a watsonx.data integration intent and *proposes* this skill. Strict triggering rules:
+- **Automatic (proposed, never silent — once per session):** the agent MUST propose this skill whenever the loop-detection rule fires. Strict triggering rules:
 
-  1. **Exhaustion required.** Do not propose on the first failure. Only propose after the agent has genuinely tried the available recovery paths and is out of moves — e.g. it has consulted the relevant `di-agent-*` knowledge skills, queried the relevant lookup/diagnostic MCP tools, attempted reasonable corrections to the flow/job, and the failure still stands. Conditions that *qualify* as "exhausted" include:
-     - a flow / pipeline still cannot be built, submitted, or run after retrying,
-     - a job run finished with `failed` / errored logs and re-running with the obvious fix did not help,
-     - the run completed but the output is clearly wrong (schema mismatch, dropped rows given a non-empty source, corrupt values) and the agent has no further hypothesis to test — note: an empty result on its own is **not** a failure signal, since the source may legitimately be empty or the flow logic may yield zero rows,
-     - the agent has looped or repeatedly misused a tool and recognizes it has no remaining strategy.
+  1. **Loop-detection rule (primary trigger).** After every tool call, maintain a rolling call log that tracks the tool name(s) invoked. A "repeat" occurs when the agent calls the **same tool**, or the **same ordered sequence of tools in a single turn**, 3 or more consecutive times and each attempt produced the same error, the same failure status, or no meaningful change in the output. When the 3rd such repeat is detected:
+     - Stop immediately — do not make a 4th attempt.
+     - Propose the bug report: *"I've called `<tool(s)>` 3 times with the same result (<one-line error/symptom>). Want me to file a bug report? (yes / no)"*
+     - Wait for an explicit reply before proceeding.
+     - Examples that qualify:
+       - Calling `compile_datastage_flow` 3 times and getting the same compile error each time.
+       - Calling `create_job` → `run_job` → `get_job_run_logs` as a unit 3 consecutive times and receiving the same failure on each cycle.
+       - Calling any single MCP tool 3 times in a row where the error message is identical or the output is structurally unchanged.
+     - Examples that do **not** qualify:
+       - 3 calls where the inputs or parameters differ meaningfully (the agent is genuinely trying different things).
+       - A tool returning an empty-but-successful result (not an error).
   2. **One proposal per session.** Track that an automatic proposal has been issued and **do not issue another automatic proposal for the remainder of the session, regardless of subsequent failures**. The user can still invoke the skill manually — the cap applies only to the automatic path.
-  3. **Ask, then wait.** When the conditions above are met, send one short message — e.g. *"I've exhausted the available recovery paths for this watsonx.data integration task (<one-line reason>). Want me to file a bug report? (yes / no)"* — and run the workflow only if the user replies affirmatively. If the user declines or ignores, do not write a file. Either response (accept, decline, ignore) consumes the one-per-session proposal slot.
+  3. **Ask, then wait.** Send the one short proposal message and run the workflow only if the user replies affirmatively. If the user declines or ignores, do not write a file. Either response (accept, decline, ignore) consumes the one-per-session proposal slot.
 
 A session counts as watsonx.data integration-related when **any** of the following are true:
 - a skill whose name starts with the `di-agent-` prefix was used,
