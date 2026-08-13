@@ -68,6 +68,7 @@ General Workflow:
 | `Snowflake Bulk` / `Snowflake` | `q.source()`, `q.write()` |
 | `Amazon S3` | `q.source()`, `q.write()` |
 | `Azure Blob Storage` | `q.source()`, `q.write()` |
+| `Dev Raw Data Source` | `q.debug_source()` |
 
 ### Editing an existing flow
 
@@ -91,7 +92,7 @@ The caller passes the target engine to `create_pyflow(engine=...)`; do not decla
 
 | Op | DataStage | StreamSets |
 |---|---|---|
-| `q.source()` | any count | exactly one |
+| `q.source()` / `q.debug_source()` | any count | exactly one |
 | `q.output()` / `q.sink()` / `q.write()` | yes | yes |
 | `.filter()`, `.sort()` | yes | yes |
 | `.lookup()` | no | yes |
@@ -105,7 +106,7 @@ The caller passes the target engine to `create_pyflow(engine=...)`; do not decla
 StreamSets flows must be a single linear chain:
 
 ```
-q.source() -> [.filter() | .lookup()]* -> [.tumble()/.slide().agg()]? -> q.output() | q.write() | q.sink()
+q.source() | q.debug_source() -> [.filter() | .lookup()]* -> [.tumble()/.slide().agg()]? -> q.output() | q.write() | q.sink()
 ```
 
 StreamSets windowed-agg measures support only `.sum()`.
@@ -309,6 +310,7 @@ Python literals auto-convert: `int -> i64`, `float -> f64`, `str -> string`, `bo
 q.source(symbol, {"col": "type", ...}) -> Frame   # dict form; supports names with spaces/punctuation; at least one column must be provided
 q.source(symbol, col="type", ...) -> Frame         # kwargs form; identifier-safe names; at least one column must be provided
 q.source(symbol, col="type", ..., schema_metadata={...}) -> Frame  # with schema metadata (Kafka/StreamSets)
+q.debug_source()                          # debug source stage for development: Dev Raw Data Source
 q.name(name)                              # flow name; snake_case; exactly once — see Flow Naming below
 q.output(frame, name)                     # register final output; required name for flat-file output
 q.sink()                                  # register destination stage to discard incoming records
@@ -486,10 +488,12 @@ Operators return `Expr`, not Python bools. Use `&`/`|`/`~`, never `and`/`or`/`no
 .nulls_first() .nulls_last()              # nulls position in sort
 ```
 
-`.precision(n)` and `.scale(n)` are chainable in any order and only take effect on `f64`/`numeric`/`decimal`/`double` columns flowing into a `q.output()` or `q.write()` node. Columns without explicit annotations fall back to the engine default. Placing them mid-pipeline is harmless — annotations are carried through but ignored until the output boundary.
+`.precision(n)` and `.scale(n)` are chainable in any order and apply only to `f64`/`numeric`/`decimal`/`double` columns.
+
+**They must be placed on the last `.with_columns()` or `.select()` that feeds directly into `q.output()` or `q.write()`.** Annotations placed on any earlier (intermediate) node are ignored — a warning is returned in the `create_pyflow` response when this happens.
 
 ```python
-# per-column precision and scale on an output
+# ✓ CORRECT — annotations on the node fed directly into q.output()
 q.output(
     frame.with_columns(
         q.col("amount").precision(18).scale(4),
@@ -498,13 +502,22 @@ q.output(
     name="result",
 )
 
-# same on a write destination
+# ✓ CORRECT — annotations on the node fed directly into q.write()
 q.write(
     frame.with_columns(
         q.col("amount").precision(18).scale(4),
     ),
     "target_table",
     operation="insert",
+)
+
+# ✗ WRONG — annotations set mid-pipeline; the downstream .select() strips them
+intermediate = frame.with_columns(
+    q.col("amount").precision(18).scale(4),  # ignored — not the last node
+)
+q.output(
+    intermediate.select("amount", "rate"),   # annotations lost here
+    name="result",
 )
 ```
 
@@ -748,6 +761,7 @@ Operations support an optional `configs` parameter to pass engine-specific confi
 
 ```python
 q.source(symbol, col="type", ..., configs={"key": "value"})
+q.debug_source(configs={"key": "value"})
 q.write(frame, symbol, operation="insert", configs={"key": "value"})
 frame.filter(expr, configs={"key": "value"})
 frame.select(..., configs={"key": "value"})
@@ -772,6 +786,9 @@ orders = q.source("orders_kafka",
                   order_id="i64",
                   amount="f64",
                   configs={"batchSize": 1000, "maxWaitTime": 5000})
+
+# Debug source with rawData and dataFormat config
+orders = q.debug_source(configs={"rawData":"id,total\n1,1.1\n2,2.2", "dataFormat":"CSV"})
 
 # Write with custom buffer settings
 q.write(result, "target_db",
