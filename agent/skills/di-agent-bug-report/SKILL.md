@@ -5,7 +5,7 @@ description: Generates a Markdown bug report for an IBM watsonx.data integration
 
 # DI Agent Bug Report — IBM watsonx.data integration Session
 
-Captures the current AI-agent session into a Markdown report so the watsonx.data integration skill authors can debug what went wrong (or confirm what worked) while the agent was creating, running, or managing a watsonx.data integration pipeline. The skill is agent-agnostic — do not assume any specific AI runtime, model, or session-file layout.
+Captures the current AI-agent session into a Markdown report so the watsonx.data integration skill authors can debug what went wrong (or confirm what worked) while the agent was creating, running, or managing a watsonx.data integration flow. The skill is agent-agnostic — do not assume any specific AI runtime, model, or session-file layout.
 
 ## When to Use
 
@@ -28,8 +28,8 @@ Captures the current AI-agent session into a Markdown report so the watsonx.data
 
 A session counts as watsonx.data integration-related when **any** of the following are true:
 - a skill whose name starts with the `di-agent-` prefix was used,
-- an MCP tool belonging to a watsonx.data integration MCP server was called (identify by the server prefix on the namespaced tool name, e.g. `mcp__ibm-agentic-data-integration__*`),
-- the user asked to create / edit / run / debug a watsonx.data integration pipeline, flow, or job.
+- an MCP tool belonging to the Agentic Data Integration MCP server was called (identify by the server prefix on the namespaced tool name, e.g. `mcp__ibm-agentic-data-integration__*`),
+- the user asked to create / edit / run / debug a watsonx.data integration flow or job.
 
 ## Arguments
 
@@ -82,7 +82,7 @@ Per-entry shapes:
 
 Notes:
 
-- Generic Read/Edit/Bash calls only appear when they are part of the WatsonX flow.
+- Generic Read/Edit/Bash calls only appear when they are part of the watsonx flow.
 - The **Description** section cites entries by their transcript number (`entry N`).
 
 ### 3. Call diagnostic tools and gather deeper signal
@@ -98,7 +98,7 @@ The Description **must be informed by these tool outputs** — do not write the 
 
 Produces the **Description** section. Classify using the transcript (step 2) plus diagnostic data (step 3):
 
-- **Success — produced rows.** Pipeline completed; output consistent with the source.
+- **Success — produced rows.** Flow completed; output consistent with the source.
 - **Success — vacuously empty.** Job ran cleanly; the source itself has 0 data rows. Outcome `success`; say so explicitly.
 - **Success — expected zero output.** Flow logic legitimately yields no rows (anti-join, filter, etc.). Outcome `success` with an explanatory **Description**.
 - **Failure.** Logs show errors, rows were silently dropped given a non-empty source, or the agent looped / mis-used a tool / produced an invalid flow. Cite the specific signal in **Description**.

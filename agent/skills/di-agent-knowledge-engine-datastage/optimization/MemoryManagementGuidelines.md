@@ -1,7 +1,7 @@
 # Memory Management Best Practices
 
 ## Overview
-DataStage NextGen jobs running in CP4D or SaaS run inside containers with memory limits so it is important to understand how memory is used during runtime to avoid container restarts or OOM kills.
+DataStage jobs run inside containers with memory limits so it is important to understand how memory is used during runtime to avoid container restarts or OOM kills.
 
 ## Connectors
   - Most connectors are Java based and use JVM heap memory which defaults to 256MB which means they use much more memory than builtin stages.

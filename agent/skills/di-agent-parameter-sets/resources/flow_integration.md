@@ -78,15 +78,33 @@ When the flow runs, `#PROJDEF.DS_HOME#` resolves to the runtime value of the `DS
 
 ## Using Parameters in Pyflow Flows
 
-Pyflow does not have native parameter set syntax. Add parameter references after flow structure is generated:
+### Parameter sets in binding paths (auto-attached)
 
-1. Create the flow structure via `create_pyflow`.
+`create_pyflow` detects `#setname.paramname#` tokens in direct-connection binding paths automatically. The compiler validates that the set and each referenced parameter exist in the project and attaches the set to the compiled flow — no separate `attach_parameter_set_to_flow` call is needed.
+
+**Do NOT call `attach_parameter_set_to_flow` after `create_pyflow` when the flow was created with `#setname.paramname#` tokens.** The set is already registered by the compiler. Calling `attach_parameter_set_to_flow` afterwards is redundant — it returns `status: already_attached` and does nothing. Only use `attach_parameter_set_to_flow` when adding a parameter set to a flow that has no binding tokens referencing that set.
+
+```python
+# create_pyflow call — parameter set tokens in the binding paths
+bindings = {
+    "orders": "conn-id:/#EnvParams.SCHEMA#/#EnvParams.SRC_TABLE#",
+    "target": "conn-id:/#EnvParams.SCHEMA#/ORDERS_ARCHIVE",
+}
+# EnvParams must already exist. No entry in 'parameters' needed — handled automatically.
+```
+
+The parameter set **must already exist** before calling `create_pyflow`. Use `create_parameter_set` first, then `list_parameter_sets` to confirm the name.
+
+### Parameter references in stage expressions (added via SDK)
+
+`create_pyflow` handles structure and connection-path tokens. To add `#setName.paramName#` into a **stage expression** (e.g. a Transformer derivation), that edit happens on the generated SDK:
+
+1. Create the flow structure via `create_pyflow` with the parameter-set binding tokens.
 2. Retrieve the generated SDK via `retrieve_datastage_flow_code`.
-3. Attach the parameter set via `attach_parameter_set_to_flow`.
-4. Edit the retrieved SDK — replace hard-coded values with `#setName.paramName#` in stage property strings.
-5. Resubmit via `update_datastage_flow`.
+3. Splice `#setName.paramName#` into the relevant stage expression strings.
+4. Resubmit via `update_datastage_flow`.
 
-Pyflow builds the structure; the SDK handles expression-level customisation.
+The parameter set is already registered on the flow from step 1 — do not call `attach_parameter_set_to_flow` again.
 
 ---
 

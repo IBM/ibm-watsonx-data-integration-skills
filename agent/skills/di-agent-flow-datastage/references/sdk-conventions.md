@@ -344,7 +344,6 @@ Some field-level properties use the `FIELD` enum class — it is available in sc
 ```python
 schema.add_field("VARCHAR", "col", delimiter=FIELD.Delim.comma)
 ```
-```
 
 ---
 
@@ -359,6 +358,25 @@ REAL, SMALLINT, TIME, TIMESTAMP, TINYINT, UNKNOWN, VARBINARY, VARCHAR
 **No BOOLEAN.** Use `BIT` with value 0 or 1.
 
 ---
+
+## Writing the flow's output to a file
+
+A flow whose result the user will want to *read* — sample rows, a count, a transformed extract — writes to a **Sequential file** sink. The output is only retrievable afterwards if the stage registers a project data asset, so set these four together:
+
+```python
+sink = flow.add_stage("Sequential file", "Output_1")
+sink.configuration.file = ["orders_summary.csv"]          # a LIST, and the property is `file`
+sink.configuration.create_data_asset = True               # default False — without it nothing is published
+sink.configuration.data_asset_name = "orders_summary.csv" # the name the asset appears under
+sink.configuration.first_line_is_column_names = SEQUENTIALFILE.FirstLineColumnNames.true
+```
+
+- **The property is `file`, and it takes a list.** `file_name` and `file_type` do not exist on this stage and are the most common compile error on the SDK path.
+- **`create_data_asset` defaults to `False`.** A flow that omits it runs green and publishes nothing — there is then no asset to preview and no way to recover the rows. Never conclude from a missing asset that the run failed; check this property first.
+- **Keep `data_asset_name` identical to the file name**, as the pyflow compiler does. They are separate properties, so they can disagree — and then the asset exists under a name you are not searching for.
+- `file_update_mode`, `delimiter`, `quote`, and `final_delimiter` already default to overwrite / comma / double-quote / end-of-row. Leave them alone unless the user asked for something else.
+
+After the run completes, find the asset with `list_data_assets(entity_name=<data_asset_name>)` and read it with `read_data_preview` (binding = the asset's id). The name you set above is the name to search for.
 
 ---
 
@@ -425,37 +443,20 @@ db2_stage.use_connection(db2_conn)
 
 
 
-## Validation
+## Validation and running — not part of the submission
 
-```python
-flow.compile()
-```
+The submission is the flow *definition* and nothing else. Saving, compiling, and running are the MCP tools' job, and the grammar rejects the library calls that do them:
 
-Always `project.update_flow(flow)` before validating.
+| To do this | Do NOT write | Call this instead |
+|---|---|---|
+| save the flow | `project.update_flow(flow)` | nothing — `create_datastage_flow` / `update_datastage_flow` saves |
+| compile / validate | `flow.compile()`, `project.validate_flow(flow)` | nothing — the same call compiles as part of the save |
+| create a job | `project.create_job(...)` | the `create_job` tool |
+| run it | `job.start(...)` | the `create_job_run` tool |
+| check on it | `job_run.refresh_status()`, `job_run.logs` | the `poll_datastage_job` / `get_job_run_logs` tools |
+| cancel it | `job_run.cancel()` | the `cancel_job_run` tool |
 
----
-
-## Job lifecycle
-
-```python
-job = project.create_job(name='My Job', flow=flow)
-job_run = job.start(name='Run 1')
-
-job_run.refresh_status()
-print(job_run.state)
-
-for line in job_run.logs:
-    print(line)
-
-job_run.cancel()
-
-# Batch job runtime config
-job.edit_configuration(
-    environment='default_datastage_px',
-    retention_amount=100,
-    warn_limit=50,
-)
-```
+Any of these inside `sdk_code` fails the whole submission with *"Unsupported statement type"* and nothing is saved.
 
 ---
 
@@ -502,7 +503,19 @@ schema2.add_field("DECIMAL", "AMOUNT")
 
 link3 = merge.connect_output_to(peek)
 link3.name = "Link_3"
+
+# Write the result somewhere the user can actually read it
+sink = flow.add_stage("Sequential file", "Output_1")
+sink.configuration.file = ["merged_data.csv"]
+sink.configuration.create_data_asset = True
+sink.configuration.data_asset_name = "merged_data.csv"
+sink.configuration.first_line_is_column_names = SEQUENTIALFILE.FirstLineColumnNames.true
+
+link4 = peek.connect_output_to(sink)
+link4.name = "Link_4"
 ```
+
+Note there is no `flow.compile()` or `project.update_flow(flow)` at the end — including either one fails the submission.
 
 ---
 
@@ -524,9 +537,10 @@ link3.name = "Link_3"
 
 - **`.list()` does not exist** on any collection — always `.get_all()`.
 - **Parameter is `project_id=`, not `id=`** — `platform.projects.get(project_id='abc-123')`.
-- **Fetch batch flows by `flow_id`, not by name** — name returns incomplete stage data.
+- **Fetch batch flows by `flow_id`, not by name** — `retrieve_datastage_flow_code`'s name path takes the first name-search match without checking it is unique.
 - **No BOOLEAN column type.** Use `BIT` with 0/1.
 - **Never guess enum values.** Inspect `accepted_values` and use one exactly.
-- **`project.validate_flow(flow)` does not exist** — use `flow.compile()` for batch.
+- **No save, compile, job, or run calls in a submission** — see [Validation and running](#validation-and-running--not-part-of-the-submission).
+- **The Sequential file sink property is `file` (a list), never `file_name`** — and without `create_data_asset = True` the run publishes no asset to read back.
 - **Connection must be a variable, not a string literal** — always assign to a variable first.
 - **Table action enums are stage-specific** (e.g. `POSTGRESQL_IBMCLOUD.TableAction.replace`, not `POSTGRESQL.TableAction` or `overwrite`). This is the same per-stage enum-class rule as `execmode` — see [Stage-specific enum classes](#stage-specific-enum-classes).
