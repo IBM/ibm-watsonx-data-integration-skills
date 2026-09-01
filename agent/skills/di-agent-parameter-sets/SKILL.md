@@ -1,6 +1,6 @@
 ---
 name: di-agent-parameter-sets
-description: "Guide for creating, editing, and using parameter sets (paramsets) in IBM watsonx Data Integration. Covers parameter types, value sets, PROJDEF, local parameters, runtime parameters, flow parameters, #param# and ${param} reference syntax for both DataStage (batch) and StreamSets (streaming) flows. Use when the user wants to create, list, update, or delete parameter sets; manage value sets; attach parameter sets to flows; or reference parameters inside a flow."
+description: "Guide for creating, editing, and using parameter sets (paramsets) in IBM watsonx.data integration. Covers parameter types, value sets, PROJDEF, local parameters, runtime parameters, flow parameters, #param# and ${param} reference syntax for both DataStage (batch) and StreamSets (streaming) flows, and parameterizing connection properties with external parameter sets. Use when the user wants to create, list, update, or delete parameter sets; manage value sets; attach parameter sets to flows or connections; parameterize connection properties; or reference parameters inside a flow or connection."
 ---
 
 # Parameter Sets
@@ -25,7 +25,8 @@ Most parameter-set features are engine-specific. Getting this wrong leads to sil
 | Switch between dev / test / prod environments | Value set on a parameter set |
 | One-off parameter for a single flow run | Local parameter (DataStage only) — use `add_local_parameter` |
 | Project-level DataStage environment variables | PROJDEF |
-| Parameterise a StreamSets pipeline | String-only parameter set |
+| Parameterise a StreamSets flow | String-only parameter set |
+| Manage connection values across environments | Attach parameter set to connection |
 
 ## Common Tasks
 
@@ -84,6 +85,8 @@ manage_value_set(action="replace", value_set_name="prod", values={...})  # overw
 manage_value_set(action="remove",  value_set_name="dev")
 ```
 
+**Never echo secret values back to the user.** When a parameter set contains `encrypted` parameters, confirm the operation by naming the parameters that were set (e.g. "DB_PASS was stored") — never repeat the actual values in your response. This applies to confirmations, summaries, and plan previews.
+
 → [resources/value_sets.md](resources/value_sets.md) for full workflow and runtime selection.
 
 ### Attach a parameter set to a flow
@@ -94,6 +97,20 @@ attach_parameter_set_to_flow(project_id=..., flow_id=..., engine=..., parameter_
 
 The registration is saved immediately. Then add parameter references (`#setName.paramName#` for DataStage, `${setName__paramName}` for StreamSets) to stage properties via `update_datastage_flow` or the StreamSets editing tools.
 → [resources/flow_integration.md](resources/flow_integration.md) for reference syntax and workflow.
+
+### Attach a parameter set to a connection
+
+```
+attach_parameter_set_to_connection(
+    project_id=...,
+    connection_id=...,
+    parameter_set_name=...,
+    property_mappings={"host": "DB_HOST", "port": "DB_PORT", "database": "DB_NAME"},
+)
+```
+
+Replaces the listed connection property values with `#paramSetName.paramName#` references and enables the "Use external Parameter Sets" toggle on the connection. Use `list_connections` to find the `connection_id`, `inspect_project_asset` with `asset_type="connection"` to see the available property names, and `list_parameter_sets` / `get_parameter_set` to confirm parameter names.
+→ [resources/connection_integration.md](resources/connection_integration.md) for the full workflow.
 
 ### Audit what parameters a flow uses
 
@@ -160,6 +177,7 @@ Permanent and unrecoverable. Before prompting for confirmation, the tool automat
 | `delete_parameter_set` | Permanently delete a set; proactively lists attached flows in the confirmation prompt |
 | `manage_value_set` | Add / replace / remove a named value set |
 | `attach_parameter_set_to_flow` | Associate a set with a DataStage or StreamSets flow |
+| `attach_parameter_set_to_connection` | Parameterize connection properties with a parameter set; enables "Use external Parameter Sets" on the connection |
 | `get_flow_parameter_references` | Return `external_paramsets` and `local_parameters` registered on a DataStage flow (DataStage only) |
 | `add_local_parameter` | Add or overwrite a local parameter on a DataStage flow (DataStage only) |
 | `remove_local_parameter` | Remove a local parameter from a DataStage flow (DataStage only) |
@@ -174,5 +192,7 @@ Permanent and unrecoverable. Before prompting for confirmation, the tool automat
 - `add_local_parameter` and `remove_local_parameter` both require `engine="datastage"` — local parameters are not available for StreamSets flows. On `get_flow_parameter_references` the same argument is optional and already defaults to `"datastage"`.
 - Call `get_flow_parameter_references` before `add_local_parameter` to avoid creating a duplicate under a different case.
 - `get_flow_parameter_references` reports registration only. A set appearing in `external_paramsets` does not prove any stage expression uses it, and absence does not prove no `#setName.paramName#` text remains in the flow.
+- `attach_parameter_set_to_connection`: both halves of `property_mappings` are validated before anything is patched — the keys must be properties the connection already has, and the values must be parameters on the named set. Use `inspect_project_asset(asset_type="connection")` to see available property names. Properties you don't map are left untouched, including secrets.
+- `update_datastage_flow` replaces the entire flow definition, but it loads the stored flow first, so `external_paramsets` and `local_parameters` survive an edit — no re-attach is needed. Confirm with `get_flow_parameter_references` after edits that matter. → [resources/flow_lifecycle_with_parameters.md](resources/flow_lifecycle_with_parameters.md) for the full risk table.
 - When something isn't working as expected → [resources/troubleshooting.md](resources/troubleshooting.md).
 - For the most common agent mistakes → [resources/common_mistakes.md](resources/common_mistakes.md).

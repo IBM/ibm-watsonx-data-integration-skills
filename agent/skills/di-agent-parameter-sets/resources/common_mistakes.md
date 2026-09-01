@@ -83,3 +83,70 @@
 **Fix:** Use the correct syntax for the engine:
 - DataStage: `#ParamSetName.ParameterName#`
 - StreamSets: `${ParamSetName__ParameterName}`
+
+---
+
+## Using Wrong Property Names in `attach_parameter_set_to_connection`
+
+**Mistake:** Passing property names that don't match the connection's actual entity properties (e.g. `"hostname"` instead of `"host"`, or `"db"` instead of `"database"`).
+
+**What happens:** The tool validates both halves of `property_mappings` before patching and returns an error listing the unknown names — nothing is written. Property names are datasource-specific, so a name that is correct for one connection type is often wrong for another (`host` for PostgreSQL vs `server` for Db2).
+
+**Fix:** Call `inspect_project_asset(asset_type="connection")` first to see the exact property names for that datasource type. If the tool rejects a name, read the `Known properties` list in the error and re-call with a name from it — do not guess a second time.
+
+---
+
+## Browsing a Connection After Parameterizing It
+
+**Mistake:** Calling `attach_parameter_set_to_connection` and then trying to explore the connection — `discover_connection_data`, or a data-asset schema lookup — to build or fix a flow against it.
+
+**What happens:** The call fails. Only the DataStage job runtime resolves `#setName.paramName#`; the connections API uses the stored string literally and rejects it:
+
+```
+CDICO2034E: The property [host] value [#DBConfig.DB_HOST#] is not valid.
+Cause: invalid characters in hostname.
+```
+
+This holds even when the parameter's default is the correct value — nothing is substituted at browse time.
+
+**Fix:** Finish all discovery first, then parameterize. If you already parameterized and still need the schema, read it from a data asset that was registered beforehand, or restore the plain values in the UI connection editor. Parameterize connections that flows already point at, not ones still being explored.
+
+---
+
+## Expecting Environment Switching on StreamSets Connections
+
+**Mistake:** Attaching a parameter set to a connection that is used by a StreamSets flow and expecting value set selection to work at runtime.
+
+**What happens:** Value sets on a connection parameter set are a DataStage feature. StreamSets does not support runtime value set selection; the parameters resolve to their default values only.
+
+**Fix:** For StreamSets connections, maintain separate parameter sets per environment, or update the connection properties directly before each run.
+
+---
+
+## Deleting a Parameter Set Attached to a Connection
+
+**Mistake:** Deleting a parameter set that is still referenced by a connection (i.e. a connection property contains `#setName.paramName#`).
+
+**What happens:** The connection will fail to resolve the property at runtime. The `delete_parameter_set` confirmation prompt lists attached **flows and connections** — read both lists before confirming.
+
+**Fix:** Before deleting a parameter set, review the attached connections listed in the confirmation message. If any are shown, use `inspect_project_asset(asset_type="connection")` to verify which properties still hold `#setName.*#` references, then update those properties (via the UI connection editor) before confirming the deletion.
+
+---
+
+## Renaming a Parameter Set While Flows or Connections Reference It
+
+**Mistake:** Calling `update_parameter_set(name="NewName", ...)` while attached flows contain `#OldName.paramName#` stage expressions or attached connections contain `#OldName.paramName#` property values.
+
+**What happens:** The rename succeeds instantly. All existing `#OldName.paramName#` references in flows and connections are **not updated automatically** — they become unresolvable. The next job run or connection test will fail with a parameter resolution error.
+
+**Fix:** Before renaming, find every occurrence of `#OldName.` across all attached flows (use `retrieve_datastage_flow_code` and search stage property strings) and across all parameterized connections (use `inspect_project_asset(asset_type="connection")` on each). Update those references to `#NewName.` **after** the rename, then republish the affected flows.
+
+---
+
+## Calling `manage_value_set` Concurrently on the Same Parameter Set
+
+**Mistake:** Issuing two `manage_value_set` calls against the same parameter set at almost the same time (e.g. two agents, two browser sessions, or two rapid tool calls).
+
+**What happens:** `manage_value_set` is implemented as a read-modify-write — it reads all existing value sets, applies the change in memory, then writes the full list back. Two concurrent writers each read the same state, apply their own change, and whichever write lands second silently overwrites the first. One of the two changes is lost.
+
+**Fix:** Treat `manage_value_set` as a serialised operation. Do not issue two calls against the same parameter set in parallel. If you need to add multiple value sets, issue the calls sequentially and wait for each to complete before issuing the next.

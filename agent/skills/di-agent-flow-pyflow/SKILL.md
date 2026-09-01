@@ -1,74 +1,48 @@
 ---
 name: di-agent-flow-pyflow
-description: "API spec for pyflow, IBM's LLM-optimized Python DSL for authoring DataStage and StreamSets flows. Its compact surface and compile-time validation offer context efficiency, fast feedback, and correctness guarantees, making it the ideal choice for writing flows from scratch and for editing — bootstrap any structural change (a new source, a join) here before precision-editing the SDK."
+description: "API spec for pyflow, IBM's LLM-optimized Python DSL for authoring DataStage and StreamSets flows. Its compact surface and compile-time validation offer context efficiency, fast feedback, and correctness guarantees. Load this only after the di-agent-flow-lifecycle router has selected the pyflow authoring backend — this is a language reference, not a decision about whether to use it. If you have not routed yet, load di-agent-flow-lifecycle instead."
 ---
 
 # Pyflow API Spec
 
+> **Routing lives elsewhere.** Whether a request should be authored in pyflow or the DataStage SDK, and whether it is a create or an edit, is decided by the `di-agent-flow-lifecycle` skill (AUTHOR state). This file is the pyflow language reference and the mechanics of using it.
+
 ## Usage Guidance
 
-Pyflow is *declarative* intent; the pyflow compiler lowers the DSL to an engine-specific *imperative* flow, producing an optimized physical plan for what you declare.
+Pyflow is *declarative* intent; the pyflow compiler lowers the DSL to an engine-specific *imperative* flow, producing an accurate functional plan for what you declare. You express the user's **goal**; the compiler picks the stages and the wiring. That is why pyflow needs no stage-level DataStage expertise to use.
 
-**Pyflow's value is building structure** — sources, joins, filters, and the wiring between them — the expensive, error-prone part to hand-author in the SDK. Expressions and stage properties are cheap to add in the SDK *once the structure exists*. So the editing question is never "can pyflow express the whole flow?" but "does this change touch structure?"
+The compiler validates your flow and gives detailed compile-time feedback *before* any asset is published, guarantees correctness, and sets up connection metadata for you — all at a fraction of the tokens of the SDK. The result is a pyflow-native flow that round-trips cleanly for later edits.
 
-**Flow creation via Pyflow is the default entry-point** - the Pyflow compiler validates your flow and gives detailed compile-time feedback, guarantees a flow that compiles, and sets up connection metadata for you. The result is a pyflow-native flow that round-trips cleanly for later edits. 
+**Pyflow's value is building structure** — sources, joins, filters, and the wiring between them — the expensive, error-prone part to hand-author in the SDK. Expressions and stage properties are cheap to add in the SDK *once the structure exists*.
 
-### Recommended Workflow
+**Do not abandon pyflow because one function or stage isn't supported.** A flow that needs, say, a regex extraction pyflow lacks still starts in pyflow: bootstrap the sources, filter, and join, then splice the missing piece into the generated SDK. Hand-authoring a new join or source from scratch is the SDK's least reliable path — never do it when pyflow can scaffold it.
 
-Always create flows with Pyflow whenever possible and only use `create_datastage_flow` under the following strict circumstances:
-1. The user explicitly expresses that they want to use SDK code
-2. Stages that are not supported by Pyflow are explicitly requested (see the section below called "Pyflow Supported Stages" as well as the [SDK skill](../di-agent-flow-datastage/references/sdk-conventions.md) for a list of SDK-supported stages)
-3. The user cannot or refuses to specify data sources upfront (e.g. the user wants the flow to generate mock data rather than connecting a database). Pyflow requires data first.
-4. Multiple file assets are expected as output from a single flow
-5. create_pyflow fails more than 5 times
+### Creating vs. overwriting a flow
 
-General Workflow:
-1. Bootstrap the structure in pyflow — sources, filters, joins, wiring.
-2. Call `retrieve_datastage_flow_code` to generate the SDK code
-3. Precision-edit the SDK code to add what pyflow couldn't express, such as property and schema configuration
+`create_pyflow` has two modes, selected by `replace_flow_id`:
+
+- **`replace_flow_id` omitted** — creates a NEW flow. Use this only when no target flow exists.
+- **`replace_flow_id=<flow_id>`** — recompiles the DSL and overwrites that flow **in place**, keeping its id and name. This is how you redo, fix, or regenerate a flow that already exists. Because the id survives, jobs pointing at the flow keep working, and no duplicate asset is created.
+
+Re-calling `create_pyflow` without `replace_flow_id` to "redo" an existing flow mints a second asset. Never delete a flow in order to recreate it.
+
+Because an overwrite preserves the existing name, the rename step below applies to fresh creates only.
+
+### Bootstrap-then-splice mechanics
+
+When pyflow can build the backbone but not the last detail:
+
+1. Bootstrap the structure in pyflow — sources, filters, joins, wiring — with `create_pyflow`.
+2. `retrieve_datastage_flow_code` to read the generated SDK.
+3. Precision-edit that SDK to add what pyflow couldn't express (an expression, a property, an extra custom / Buildop / Java stage) and resubmit the whole body via `update_datastage_flow`.
 
 **SDK code is verbose** — manual node linking, schema propagation, and both visible and hidden properties. Writing structure from scratch without a working reference is highly error-prone; pyflow generates it correctly wired, leaving only small, local edits.
 
-### Pyflow Supported Stages
+### Where pyflow stops
 
-#### DataStage
+The known gaps live in one place: `di-agent-flow-lifecycle/references/registry.md`, under this backend's "Known gaps" headings, split into **blocking** (pyflow cannot lay a usable backbone — go to the SDK for the create) and **spliceable** (pyflow builds the flow, one local stage or property is added afterwards). That split is a routing decision and belongs to the router, not here.
 
-| SDK Stage Type | Pyflow Ops |
-|---|---|
-| `Transformer` | `.filter()`, `.select()`, `.with_columns()`, `.partition_by().select()` |
-| `Sort` | `.sort()` |
-| `Join` | `.join()`, `.cross()`, `.intersect()` |
-| `Aggregator` | `.group_by().agg()` |
-| `Head` | `.head()`, `.fetch()` |
-| `Remove Duplicates` | `.unique()` |
-| `Funnel` | `.union()` |
-| `Copy` | *(internal fan-out)* |
-| `Sequential file` | `q.source()` (asset file), `q.output()`, `q.sink()` |
-| `Amazon S3` | `q.source()`, `q.write()` |
-| `IBM Cloud Object Storage` | `q.source()`, `q.write()` |
-| `Microsoft Azure Blob Storage` | `q.source()`, `q.write()` |
-| `IBM watsonx.data Presto` | `q.write()` |
-| *(Any Other Connection - without special handling)* | `q.source()`, `q.write()` |
-
-#### StreamSets
-
-| SDK Stage Type | Pyflow Ops |
-|---|---|
-| `Expression Evaluator` | `.filter()` |
-| `Field Renamer` | `.select()`, `.with_columns()` |
-| `JavaScript Evaluator` | `.sort()` |
-| `JDBC Lookup` | `.lookup()` |
-| `Windowing Aggregator` | `.tumble().agg()`, `.slide().agg()` |
-| `Trash` | `q.sink()` |
-| `Kafka Multitopic Consumer` / `Kafka Producer` | `q.source()`, `q.write()`|
-| `JDBC Multitable Consumer` / `JDBC Producer` | `q.source()`, `q.write()` |
-| `IBM Db2` | `q.source()`, `q.write()` |
-| `Oracle Multitable Consumer` / `Oracle` | `q.source()`, `q.write()` |
-| `MongoDB Atlas` | `q.source()`, `q.write()` |
-| `Snowflake Bulk` / `Snowflake` | `q.source()`, `q.write()` |
-| `Amazon S3` | `q.source()`, `q.write()` |
-| `Azure Blob Storage` | `q.source()`, `q.write()` |
-| `Dev Raw Data Source` | `q.debug_source()` |
+There is deliberately no list of what pyflow *supports*. pyflow is declarative — you express the goal and the compiler chooses the stages — so a supported-stage table cannot be kept true, differs per engine, and invites the wrong question. The question is whether pyflow can express the request, and the engine op tables below answer it directly.
 
 ### Editing an existing flow
 
@@ -114,6 +88,8 @@ StreamSets windowed-agg measures support only `.sum()`.
 ## Symbols And Bindings
 
 Strings passed to `q.source()`, `.lookup()`, and `q.write()` are local **symbols**. The caller binds each symbol to a data source via `create_pyflow(bindings=...)`; symbols need not match catalog names. Every used symbol must be bound.
+
+**Name each symbol after the asset it binds to** — `q.write(frame, "orders_augmented")`, not `q.write(frame, "target")`. `"target"` and `"source"` are placeholders in the examples below, not names to copy: they compile fine but leave the code and the bindings map unreadable, since nothing but the asset id then says where the rows land. Reuse the destination asset's own name whenever you have it.
 
 Each binding value is one of:
 
@@ -190,6 +166,8 @@ A **parameter set** is a project-level asset that groups named parameters togeth
 Unlike local parameters, parameter sets are **not declared in `parameters`** — `create_pyflow` detects every `#setname.paramname#` token in the bindings automatically, validates that the set and each referenced parameter exist in the project, and attaches the set to the compiled flow.
 
 **The parameter set must already exist before calling `create_pyflow`.** Use `create_parameter_set` to create it first, then `list_parameter_sets` to confirm the name.
+
+> **Do NOT call `attach_parameter_set_to_flow` after `create_pyflow` when the flow was created with `#setname.paramname#` binding tokens.** The compiler attaches the set as part of compilation. Calling `attach_parameter_set_to_flow` afterwards is always redundant — the tool will return `status: already_attached` and do nothing. Only call `attach_parameter_set_to_flow` when adding a parameter set to a flow that was created without any binding tokens referencing that set.
 
 ```python
 # DSL code — unchanged from any other flow
@@ -396,23 +374,15 @@ orders = q.source("orders", order_id="i64", amount="f64")
 
 ### Output Operations
 
-`q.output()` registers a frame as the pipeline's final output and creates a file data asset in the project that contains
-the frame's full data:
+`q.output()` registers a frame as the flow's final output and creates a file data asset in the project that contains the frame's full data:
 
 ```python
 q.output(frame, name="my_output")
 ```
 
-The `name` parameter is required, but the file asset is **not** simply named `{name}.csv` — the
-compiler prefixes it (`de_agent_...`) and adds a random suffix to avoid collisions. The actual
-filename is returned by `create_pyflow` in `target_info[].target_path`; use that exact string,
-not the `name` you passed in.
+The `name` parameter is required, but the file asset is **not** simply named `{name}.csv` — the compiler prefixes it (`de_agent_...`) and adds a random suffix to avoid collisions. The actual filename is returned by `create_pyflow` in `target_info[].target_path`; use that exact string, not the `name` you passed in.
 
-Agent-generated assets (anything matching the `de_agent_` prefix) are hidden from `list_data_assets`
-by default. To discover the asset ID for this output, call `list_data_assets` with
-`entity_name` set to the `target_path` from `create_pyflow` (or `starts:de_agent_<name>`) **and**
-`exclude_agent_generated=False` — otherwise the search returns zero results even with the
-correct name. Then use `read_file_asset_preview` to retrieve the data.
+To discover the asset ID for this output, call `list_data_assets` with `entity_name` set to the `target_path` from `create_pyflow` (or `starts:de_agent_<name>`). Then use `read_data_preview` to retrieve the data. If the search returns nothing, the usual cause is that the run has not finished — the output asset does not exist until a run of the current flow definition completes — not a wrong name.
 
 ### Write Operations
 
@@ -431,7 +401,7 @@ q.write(frame, "target", operation="create")     # create a new (non-existent) t
 - `"overwrite"` truncates the table before writing, so re-running a flow is idempotent. Use it when the destination should hold exactly this run's output (datastage only).
 - Unsupported operations such as `"upsert"` are rejected; do not approximate them with insert or update.
 - The `"target"` symbol is bound like any other (see Symbols And Bindings): a registered data asset UUID, or direct connection use `"<connection_id>:/<SCHEMA>/<TABLE>"` to write straight to a connection-backed table without registering a data asset.
-- **Reading written data**: After running the flow, use the `read_connection_data_preview` tool to read data from the destination connection.
+- **Reading written data**: After running the flow, use the `read_data_preview` tool to read data from the destination connection.
 
 #### Create Operation Behavior
 
@@ -439,8 +409,7 @@ When using `operation="create"` on DataStage:
 
 1. **Table doesn't exist**: The table will be created with the schema inferred from the frame's columns
 2. **Table already exists**: Do not use `operation=create` with an existing table.
-3. **Binding requirement**: Must use a direct connection binding (`"connection_id:/SCHEMA/TABLE"`) 
-   rather than a data asset ID, since the table doesn't exist in the catalog yet
+3. **Binding requirement**: Must use a direct connection binding (`"connection_id:/SCHEMA/TABLE"`) rather than a data asset ID, since the table doesn't exist in the catalog yet
 
 **Example**:
 ```python
@@ -462,7 +431,6 @@ bindings = {
 - Column names and types come from the frame's schema
 - Primary keys, indexes, and constraints are NOT automatically created
 - For advanced table creation options, create the table manually first, then use `operation="insert"`
-```
 
 ## Expression Methods
 
@@ -659,20 +627,22 @@ For a computed grouping key, materialize it with `.with_columns()` first, then g
 
 ## Flow Naming
 
-The name passed to `q.name()` is used as the base flow name. To avoid collisions across repeated
-compilations, `create_pyflow` appends a short random suffix when it creates the flow
-(e.g. `my_flow` becomes `my_flow_a4bc9z1q`).
+The name passed to `q.name()` is used as the base flow name. To avoid collisions across repeated compilations, `create_pyflow` appends a short random suffix when it creates the flow (e.g. `my_flow` becomes `my_flow_a4bc9z1q`).
 
-If the user requested a specific name, use `rename_datastage_flow` after creation to strip the
-suffix and apply it. Pass the `flow_id` returned by `create_pyflow` and the intended name:
+This applies to **creates only**. When `replace_flow_id` is set, the target flow keeps its existing name and `q.name()` is ignored for naming purposes — no rename is needed afterwards.
+
+**After a fresh create, always call `rename_asset` to set the intended name** — immediately, before any job or run, and even if the flow failed to compile or a later run fails. The suffix makes the create collision-proof; it is not the flow's name, and the suffixed flow is what stays behind in the project either way. Pass the `flow_id` returned by `create_pyflow` and the name you put in `q.name()`:
 
 ```
-rename_datastage_flow(
-    flow_id    = "<flow_id from create_pyflow>",
+rename_asset(
+    asset_id   = "<flow_id from create_pyflow>",
+    asset_type = "datastage_flow",   # "streamsets_flow" on StreamSets
     new_name   = "<the name passed to q.name()>",
     project_id = "<project_id>",
 )
 ```
+
+On a retry, reuse the existing flow via `replace_flow_id` rather than creating a second one to rename.
 
 ## Examples
 

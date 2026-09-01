@@ -89,6 +89,9 @@ To run without a value set (using parameter defaults), omit the `value_set` key 
 
 ## Guardrails
 
+- **Never echo secret values in responses.** When a value set contains `encrypted` parameters, confirm by parameter name only ("DB_PASS was stored") — never repeat the plaintext value in a confirmation, summary, or plan preview.
 - **Parameter rename hazard:** if you rename a parameter after creating value sets, the old name remains in the value set entries and becomes orphaned — update each value set manually after renaming.
+- **Parameter set rename hazard:** renaming the parameter set itself orphans all `#OldName.paramName#` references in attached flows and connection properties — those are not updated automatically.
 - **Values are fully replaced per call:** a `replace` call with three keys drops any other entries that were in the set previously; always include all intended key-value pairs.
+- **Concurrent modification risk:** `manage_value_set` uses a read-modify-write pattern with no locking. Do not issue two calls against the same parameter set in parallel — the second write silently overwrites the first.
 - **Do not create value sets on StreamSets parameter sets** — the API does not reject them, but they have no effect at runtime.
