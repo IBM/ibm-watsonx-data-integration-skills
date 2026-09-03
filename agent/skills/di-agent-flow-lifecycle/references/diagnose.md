@@ -80,4 +80,4 @@ Report what you found and what you could not determine, and ask the user. **Do n
 
 ## Follow-up
 
-After delivering a diagnosis for a job failure, if alert tooling is available, check whether the job has alert definitions (`list_alert_definitions_for_job(project_id=…, job_name=…)` — it takes the job's *name*, not its id) and offer to create one for failures. If a TRIGGERED alert matches this run, offer to acknowledge or resolve it.
+After delivering a diagnosis for a job failure, if alert tooling is available, check whether the job has alert definitions (`list_alert_definitions(project_id=…, job_name=…)` — it takes the job's *name*, not its id) and offer to create one for failures. If a TRIGGERED alert matches this run, offer to acknowledge or resolve it.

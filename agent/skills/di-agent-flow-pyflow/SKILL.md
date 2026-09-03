@@ -5,7 +5,8 @@ description: "API spec for pyflow, IBM's LLM-optimized Python DSL for authoring 
 
 # Pyflow API Spec
 
-> **Routing lives elsewhere.** Whether a request should be authored in pyflow or the DataStage SDK, and whether it is a create or an edit, is decided by the `di-agent-flow-lifecycle` skill (AUTHOR state). This file is the pyflow language reference and the mechanics of using it.
+> **Routing lives elsewhere.** Whether a request should be authored in pyflow or the DataStage SDK, and whether it is a create or an edit, is decided by the `di-agent-flow-lifecycle` skill (AUTHOR state). This file is the pyflow language reference and the mechanics of using it. Before working with flows, you must load the `di-agent-flow-lifecycle` skill. Do not write any Pyflow code before loading the lifecycle skills.
+
 
 ## Usage Guidance
 
@@ -54,11 +55,27 @@ There is deliberately no list of what pyflow *supports*. pyflow is declarative �
 
 The runtime provides `q`; do not import or instantiate. Every flow:
 
-1. Declares sources with `q.source()` -- list only referenced columns, using exact names and types from asset metadata. At least one column must be provided.
+1. Declares sources with `q.source()` -- list only referenced columns, using exact names and types from asset metadata. **At least one column must be provided** — `q.source("sym")` with no columns is a compile error.
 2. Calls `q.name("<snake_case_name>")` exactly once.
 3. Ends with exactly one sink: `q.output(frame)`, or `q.write(frame, "symbol", operation="insert" | "overwrite" | "update" | "create")` when writing to a destination asset. `operation="create"` is DataStage-only.
 
 Code must contain no imports or `print()`.
+
+### The `q` variable — do not reassign it
+
+`q` is the global DSL handle. **Never assign a source result back to `q`.**
+
+```python
+# ✗ WRONG — q is now a Frame; q.col(), q.name(), q.output() all break
+q = q.source("orders", id="i64", amount="f64")
+
+# ✓ CORRECT — source result goes to a new variable
+orders = q.source("orders", id="i64", amount="f64")
+q.name("my_flow")
+q.output(orders, name="out")
+```
+
+`q` has exactly the methods listed in the `q` Namespace section. It has no `.lit()`, `.sum()`, `.avg()`, `.max()`, `.round()`, `.row_number()`, `.select()`, or any other method not shown there. Aggregates, window functions, and scalar ops live on `Expr` objects returned by `q.col(...)`, not on `q` itself.
 
 ## Engine Targets
 
@@ -284,21 +301,23 @@ Python literals auto-convert: `int -> i64`, `float -> f64`, `str -> string`, `bo
 
 ## `q` Namespace
 
+`q` exposes only the methods listed here. **Do not call any other method on `q`** — there is no `q.lit()`, `q.sum()`, `q.avg()`, `q.max()`, `q.round()`, `q.row_number()`, `q.select()`, `q.datediff()`, or any free aggregate/scalar function. All of those live on `Expr`, accessed via `q.col(name).method()`.
+
 ```python
 q.source(symbol, {"col": "type", ...}) -> Frame   # dict form; supports names with spaces/punctuation; at least one column must be provided
 q.source(symbol, col="type", ...) -> Frame         # kwargs form; identifier-safe names; at least one column must be provided
 q.source(symbol, col="type", ..., schema_metadata={...}) -> Frame  # with schema metadata (Kafka/StreamSets)
 q.debug_source()                          # debug source stage for development: Dev Raw Data Source
 q.name(name)                              # flow name; snake_case; exactly once — see Flow Naming below
-q.output(frame, name)                     # register final output; required name for flat-file output
+q.output(frame, name)                     # register final output; required name; no other kwargs accepted
 q.sink()                                  # register destination stage to discard incoming records
 q.write(frame, symbol, operation="insert"|"overwrite"|"update"|"create")  # write final output to destination
-q.col(name) -> Expr                       # column reference
+q.col(name) -> Expr                       # column reference — use this, not frame['col'] or frame.col(name)
 q.count_star() -> Expr                    # count-all `[datastage]`; use in .select() or .group_by().agg()
 q.cast(value, type) -> Expr               # typed literal or expr cast; null: q.cast(None, "f64")
 q.when(cond).then(val)...                 # see Conditional
 q.concat(*exprs) -> Expr                  # string concat; 2+ args
-q.date_diff(d1, d2) -> Expr               # day difference as i64
+q.date_diff(d1, d2) -> Expr               # day difference as i64 — note: date_diff, not datediff
 q.strptime_time(expr, fmt) -> Expr        # string -> temporal; fmt is a strftime-style format
 q.strftime(expr, fmt, tz?) -> Expr        # temporal -> string; tz is an IANA name
 ```
@@ -380,9 +399,13 @@ orders = q.source("orders", order_id="i64", amount="f64")
 q.output(frame, name="my_output")
 ```
 
-The `name` parameter is required, but the file asset is **not** simply named `{name}.csv` — the compiler prefixes it (`de_agent_...`) and adds a random suffix to avoid collisions. The actual filename is returned by `create_pyflow` in `target_info[].target_path`; use that exact string, not the `name` you passed in.
+`name` is required. The output file is named `{name}.csv` and is overwritten on each run. Use `q.sink(frame, name)` for the same effect; omitting `name` from `q.sink()` produces an unpredictable filename — use `target_info[].target_path` from the `create_pyflow` response to find it.
 
-To discover the asset ID for this output, call `list_data_assets` with `entity_name` set to the `target_path` from `create_pyflow` (or `starts:de_agent_<name>`). Then use `read_data_preview` to retrieve the data. If the search returns nothing, the usual cause is that the run has not finished — the output asset does not exist until a run of the current flow definition completes — not a wrong name.
+To find the output asset after a run, call `list_data_assets` with `entity_name={name}.csv`. If nothing is returned, the run has not completed yet.
+
+`read_data_preview` returns **at most 100 rows**. The asset holds the frame's full data; the tool shows a sample of it and reports `row_count` and `truncated`. When `truncated` is true, do not present those rows as the complete result and do not count them to answer "how many rows" — the real count is `rows_written` from `poll_datastage_job`, the engine's own count of what it wrote.
+
+Preview the asset named in `create_pyflow`'s `target_info[].target_path`, not a source table. If reading the output asset fails, say so rather than describing an input table as the result.
 
 ### Write Operations
 
@@ -401,7 +424,7 @@ q.write(frame, "target", operation="create")     # create a new (non-existent) t
 - `"overwrite"` truncates the table before writing, so re-running a flow is idempotent. Use it when the destination should hold exactly this run's output (datastage only).
 - Unsupported operations such as `"upsert"` are rejected; do not approximate them with insert or update.
 - The `"target"` symbol is bound like any other (see Symbols And Bindings): a registered data asset UUID, or direct connection use `"<connection_id>:/<SCHEMA>/<TABLE>"` to write straight to a connection-backed table without registering a data asset.
-- **Reading written data**: After running the flow, use the `read_data_preview` tool to read data from the destination connection.
+- **Reading written data**: After running the flow, use the `read_data_preview` tool to read data from the destination connection. It returns at most 100 rows; the number written is `rows_written` from `poll_datastage_job`, not the length of the preview.
 
 #### Create Operation Behavior
 
@@ -444,7 +467,7 @@ Operators return `Expr`, not Python bools. Use `&`/`|`/`~`, never `and`/`or`/`no
 
 ```python
 .alias(name)                              # snake_case
-.cast(type)                               # q.col("x").cast("i32")
+.cast(type)                               # q.col("x").cast("i32") — use for rounding/type coercion; no .round() method
 .precision(n)                             # numeric precision hint for output columns; int only
 .scale(n)                                 # numeric scale hint for output columns; int only
 .sum()                                    # aggregate; both engines
@@ -455,6 +478,14 @@ Operators return `Expr`, not Python bools. Use `&`/`|`/`~`, never `and`/`or`/`no
 .asc() .desc()                            # sort direction only
 .nulls_first() .nulls_last()              # nulls position in sort
 ```
+
+**There is no `.round()` method.** To reduce decimal places, cast to a lower-precision type: `q.col("x").cast("f32")`, or use `.precision(n).scale(n)` on the output column.
+
+**There is no `.fillna()` or `.coalesce()` method on `Expr`.** For null replacement, use a conditional: `q.when(q.col("x").is_null()).then(0).otherwise(q.col("x"))`. For a two-argument coalesce pattern, chain `.when().then().otherwise()` the same way.
+
+**There is no `.contains()` method directly on a column reference.** String predicates live under the `.str` accessor: `q.col("x").str.contains("pattern")`.
+
+**Aggregates and window functions must be called on `Expr` objects** (`q.col(...).sum()`, `q.col(...).row_number()`), never on `q` directly or on a Frame. They are only valid inside `.select()`, `.group_by().agg()`, or `.partition_by().select()`.
 
 `.precision(n)` and `.scale(n)` are chainable in any order and apply only to `f64`/`numeric`/`decimal`/`double` columns.
 
@@ -499,6 +530,8 @@ q.when(c1).then(v1).when(c2).then(v2).otherwise(else_val)   # multi-branch
 
 ### `.str` Accessor
 
+String methods are accessed via `.str.<method>()`, **not directly on the column reference**. `q.col("x").contains(...)` is wrong; use `q.col("x").str.contains(...)`.
+
 ```python
 .str.upper()
 .str.contains(s)       .str.starts_with(p)   .str.ends_with(s)
@@ -507,26 +540,34 @@ q.when(c1).then(v1).when(c2).then(v2).otherwise(else_val)   # multi-branch
 .str.substring(start_1based, length?)
 ```
 
-**Best Practice:** Apply `.str.trim()` to string columns in final output results to remove leading and trailing whitespace, unless there is a clear requirement to preserve spacing or the user explicitly requests otherwise. Clean, trimmed final output is preferred by default.
+**Best practice:** Apply `.str.trim()` to string columns in final output results to remove leading and trailing whitespace, unless there is a clear requirement to preserve spacing or the user explicitly requests otherwise. Clean, trimmed final output is preferred by default.
 
 ## Frame Methods
 
 ```python
 .filter(expr) -> Frame                    # boolean expr; no aggregates inside
 .select(*exprs) -> Frame                  # bare strings become col(name); mixing plain refs with aggregates triggers implicit group-by
-.with_columns(*exprs) -> Frame            # keep all input cols + add/replace; no aggregates inside
+.with_columns(*exprs) -> Frame            # keep all input cols + add/replace; no aggregates inside; all expressions must use .alias(); no keyword-argument form
 .sort(*col_refs) -> Frame                 # column refs only; bare strings sort asc; use .asc()/.desc()/.nulls_first()/.nulls_last()
                                           # nulls position defaults to nulls_first when not specified
-.head(count) -> Frame                     # use .fetch(count, offset) when offset needed
-.unique(*subset) -> Frame                 # empty subset dedupes on all columns; output keeps every column
+.head(count) -> Frame                     # use .fetch(count, offset) when offset needed; not .limit()
+.unique(*subset) -> Frame                 # empty subset dedupes on all columns; not .distinct() or .drop_duplicates()
 .union(other) -> Frame                    # set-semantics dedup
 .intersect(other) -> Frame
 .partition_by(*col_refs, order_by=?) -> _PartitionBuilder  # `[datastage]` only; see Partitioning section
 ```
 
+**Frame method names — do not substitute synonyms.** The following are all compile errors: `.order_by()` (use `.sort()`), `.limit()` (use `.head()`), `.distinct()` / `.drop_duplicates()` (use `.unique()`), `.left_join()` / `.right_join()` (use `.join(..., how="left")`), `.groupby()` (use `.group_by()` with underscore), `.with_column()` singular (use `.with_columns()` plural), `.agg()` directly on Frame (use `.group_by(...).agg(...)`).
+
+**Columns are referenced via `q.col('name')`, not via subscript.** `frame['col']` is not supported — use `q.col('col')` in expressions.
+
+**`with_columns()` takes positional `Expr` arguments, each with `.alias()` — not keyword arguments.** `frame.with_columns(new_col=q.col("x") + 1)` is wrong. Write `frame.with_columns((q.col("x") + 1).alias("new_col"))`.
+
 **Aggregates** may appear only in `.select()` or `.group_by().agg()`. To filter on an aggregated value, aggregate first, then `.filter(...)`.
 
 **No analytic window-over functions.** Use `.tumble()` / `.slide()` for time-windowed aggregates on StreamSets. For DataStage window functions, see Partitioning section below.
+
+**Rolling / range-window aggregates on DataStage** (e.g. "sum of contributions within the last 27 days of each anchor row") are not a built-in operation. Express them as `.cross()` → `.filter(q.date_diff(...) <= N)` → `.group_by().agg()`. See the recipe in the Examples section.
 
 ### Join `[datastage]`
 
@@ -537,9 +578,12 @@ a.cross(b, suffix="_right") -> Frame
 ```
 
 - `how`: `inner` | `left` | `right` | `outer` | `cross`.
-- `on=` (same-name keys): right key columns are dropped.
+- `on=` (same-name keys): right key columns are dropped. The key must be a **string** (column name), not an expression. When key names differ use `left_on=` / `right_on=`.
 - `left_on` / `right_on` (different-name keys): both key columns are kept.
 - Duplicate non-key right columns get `suffix` (collisions stack: `_right_right`). Rename via `q.col("x_right").alias(...)`.
+- **`join()` takes exactly one positional argument (the right frame) plus keyword arguments.** `a.join(b, q.col("id") == q.col("id2"))` is wrong. Pass the join condition via `on=`, `left_on=`, or `right_on=`. If the key columns have different names, use `left_on="id", right_on="id2"`.
+- **Columns passed to `left_on=` / `right_on=` must exist in the respective side** — `left_on` must name a column in the left frame; `right_on` must name a column in the right frame. If you get a "column not found" error, verify the column name against the source schema.
+- **Non-equi and range joins** (inequality predicates such as `a.date <= b.date`, date-distance thresholds, or `id != id`) cannot use `.join()`, which is equi-only. Use `.cross()` to produce the Cartesian product, then `.filter()` with the inequality condition.
 
 ### Lookup `[streamsets]`
 
@@ -573,7 +617,7 @@ m.slide(length, group_by=?, tz=?, on=?).agg(*measures) -> Frame
 .partition_by(*col_refs, order_by=?) -> _PartitionBuilder
 ```
 
-Partitioning configures how data is distributed and ordered for window functions like `rank()`, `dense_rank()`, and `row_number()`. Chain `.select()` after `.partition_by()` to project columns with window functions:
+Partitioning configures how data is distributed and ordered for window functions like `rank()`, `dense_rank()`, and `row_number()`. Chain **only `.select()`** after `.partition_by()` — `.with_columns()` is not available on a `_PartitionBuilder`. Window functions (`.rank()`, `.dense_rank()`, `.row_number()`) are `Expr` methods called inside that `.select()`, not standalone functions on `q`. At least one partition key must be provided; for a global window with no partitioning, use a constant column (e.g., add a literal column with `q.cast(1, "i32").alias("_part")`).
 
 ```python
 # Rank products by sales within each category
@@ -615,6 +659,10 @@ result = (
 ```python
 .group_by(*col_refs).agg(*measures) -> Frame     # .alias() every measure
 ```
+
+- `.group_by()` requires at least one column argument. For a global aggregate with no grouping key, use `.select()` with an aggregate expression instead: `t.select(q.col("x").sum().alias("total"))`.
+- `.agg()` takes positional `Expr` arguments — **not keyword arguments**. `agg(total=q.col("x").sum())` is wrong. Write `agg(q.col("x").sum().alias("total"))`.
+- Grouping columns must be simple column references (a bare name string or `q.col("name")`), not computed expressions. To group by a derived value, materialize it with `.with_columns()` first, then pass that column name to `.group_by()`.
 
 Inside `.select()`, mixing plain column refs with aggregates turns the plain refs into implicit grouping keys:
 
@@ -724,6 +772,34 @@ q.output(
     name="top_products_output"
 )
 ```
+
+DataStage rolling / range-window aggregate — cross-join pattern `[datastage]`:
+
+```python
+# For each anchor row, sum all contributions that fall within 27 days before it.
+# The Join stage is equi-only, so a range predicate goes through .cross() + .filter().
+anchors = q.source("anchors", {"id": "i64", "anchor_date": "date", "region": "string"})
+contribs = q.source("contribs", {"anchor_id": "i64", "contrib_date": "date", "amount": "f64"})
+q.name("rolling_27d_sum")
+q.output(
+    anchors
+    .cross(contribs, suffix="_c")                               # full cartesian product
+    .filter(
+        (q.col("id") == q.col("anchor_id_c")) &                # equi predicate first (cheap filter)
+        (q.date_diff(q.col("anchor_date"), q.col("contrib_date_c")) >= 0) &
+        (q.date_diff(q.col("anchor_date"), q.col("contrib_date_c")) <= 27)
+    )
+    .group_by("id", "anchor_date", "region")
+    .agg(q.col("amount_c").sum().alias("rolling_sum")),
+    name="rolling_output"
+)
+```
+
+Key points:
+- `.cross()` is the only way to join on an inequality or date-distance predicate; `.join()` is equi-only.
+- Put the equi-predicate (`id == anchor_id`) first inside `.filter()` so the engine discards non-matching pairs before evaluating the range condition.
+- `q.date_diff(later, earlier)` returns a positive i64 when `later >= earlier`. Swap arguments if the sign is reversed.
+- After `.filter()`, treat the result as a normal frame: `.group_by().agg()`, `.select()`, further `.join()`, etc.
 
 ## Stage Configuration `[streamsets]`
 
