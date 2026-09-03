@@ -58,7 +58,9 @@ So do not call `duplicate_asset` yourself before an edit — you would end up wi
 
 ## Step 2 — Select a backend (`registry.md`)
 
-**Default to `pyflow` and try it first.** It is declarative — express *what the user wants* and let the compiler choose stages; you do not need stage-level DataStage knowledge to start. It also compiles and validates the DSL before any asset exists, so most failures are caught pre-publish.
+**Load the lifecycle skill `references/registry.md` now.** The blocking and spliceable gap lists that determine outcome (a), (b), or (c) live there and are not restated in this file. You cannot make the routing decision without them.
+
+**Default to `pyflow` and try it first with optional splicing later.** It is declarative — express *what the user wants* and let the compiler choose stages; you do not need stage-level DataStage knowledge to start. It also compiles and validates the DSL before any asset exists, so most failures are caught pre-publish.
 
 **Decide the backend from the triggers below, not by probing.** They are answerable from the request itself — whether the user named a stage, whether sources exist, and which of pyflow's gap lists — **blocking** or **spliceable** — the named thing falls on. `datastage_property_lookup` and `recommend_datastage_stages` describe stages you have already chosen to use; reaching for them to work out *whether* pyflow can do something inverts the order and spends the task's budget before authoring starts. Look properties up when you write the stage, not when you pick the path.
 
@@ -69,14 +71,16 @@ The common mistake is treating this as pyflow-or-SDK. Most capability gaps are *
 | Outcome | When | What you do |
 |---|---|---|
 | **(a) pyflow** | nothing in the request is a known gap | author the whole flow in pyflow |
-| **(b) pyflow → splice** | the gap is on pyflow's **spliceable** list — a stage hung off the flow, or a property/expression/aggregate on a stage that already exists | author the backbone in pyflow, then splice the rest onto the generated SDK (Step 4) |
+| **(b) pyflow → splice** | the gap is on pyflow's **spliceable** list — a stage hung off the flow, or a property on a stage that already exists | author the backbone in pyflow, then splice the rest onto the generated SDK (Step 4) |
 | **(c) datastage-sdk** | a selection trigger fires — see below | author the whole flow with the SDK |
 
-**(b) is a first-class outcome, not a recovery.** It is the default for every **spliceable** gap, and it is chosen *here*, before you author — not discovered in Step 4 after something fails. Hand-writing a source, join, or the wiring between them is the SDK's least reliable path; pyflow lays that backbone correctly every time and leaves you a small, local edit. Never take (c) for a flow that is mostly pyflow-shaped.
+**(b) is a first-class outcome, not a recovery.** It is the default for every **spliceable** gap, and it is chosen *here*, before you author — not discovered in Step 4 after something fails. Hand-writing a source, join, or the wiring between them is the SDK's least reliable path; pyflow lays that backbone correctly every time and leaves you a small, local edit. Never take (c) for a flow that can mostly be represented via Pyflow. **Read `registry.md`** to see what shapes are spliceable. 
+
+**Never leave the flow at "close enough" to the user's request.** Do not choose (a) if there are elements that Pyflow cannot represent. Choose (b) to scaffold as much of the flow as possible using Pyflow first, then call `update_datastage_flow` to add the details to complete the user's request. Never forget to perform the update during path (b) or else the flow will not fulfill the user's intent.
 
 This fork is **DataStage-only**: on StreamSets, pyflow is the only registered backend, so there is no (b) or (c). A StreamSets request pyflow cannot express is a limit to report to the user, not a backend to switch to.
 
-Escalate to **`datastage-sdk`** — outcome (c) — only when one of the triggers under its "Select this backend when" heading fires. **Read those triggers, and the blocking / spliceable lists they refer to, from `registry.md`** — they are not restated here. On a **blocking** gap, skip the pyflow attempt entirely and go straight to the SDK.
+Escalate to **`datastage-sdk`** — outcome (c) — only when one of the triggers under its "Select this backend when" heading fires. Those triggers and the blocking / spliceable lists are in `registry.md`, which you loaded above. On a **blocking** gap, skip the pyflow attempt entirely and go straight to the SDK.
 
 The rest of this step is what the registry cannot encode — how to read a request against those lists.
 
@@ -121,7 +125,7 @@ Load the skill named in the backend's **Load** row in `registry.md` — the one 
 
 - **pyflow — create:** write the DSL for the user's goal, then `create_pyflow`, then `rename_asset` — a create publishes with a random suffix (`orders_a4bc9z1q`), so it is not finished until the rename lands. Rename before any job or run, and even if the flow failed to compile: the suffixed flow is what stays behind either way. The backend skill has the call signature.
 - **pyflow — edit:** write the DSL for the *whole intended flow* and call `create_pyflow(replace_flow_id=<id>)`. The id and name are preserved, so no rename is needed.
-- **pyflow → splice (outcome b):** author the backbone as above, then continue straight into Step 4 — the flow is not finished until the splice lands. This is **one** AUTHOR pass with a two-phase authoring step, not a second lap through the router: re-entering the router would classify the now-existing flow as a fresh EDIT and put you back in duplicate territory.
+- **pyflow — splice:** author the backbone with Pyflow as above, then immediately proceed to Step 4. The flow is not finished and must not be handed to the user or moved to VALIDATE until the update is successful. Do not stop at the pyflow create, do not report the flow as done, and do not offer to run it.
 - **datastage-sdk — create:** `create_datastage_flow` with the complete SDK body.
 - **datastage-sdk — edit:** see Step 4.
 

@@ -5,7 +5,7 @@ description: "Reference for the verbose watsonx.data integration SDK for DataSta
 
 # Author and Edit DataStage Flows with the SDK
 
-> **Routing lives elsewhere.** Whether a request should be authored here or in pyflow, and whether it is a create or an edit, is decided by the `di-agent-flow-lifecycle` skill (AUTHOR state). This file is the SDK reference and the mechanics of using it.
+> **Routing lives elsewhere.** Whether a request should be authored here or in pyflow, and whether it is a create or an edit, is decided by the `di-agent-flow-lifecycle` skill (AUTHOR state). This file is the SDK reference and the mechanics of using it. Before working with flows, you must fully understand the `di-agent-flow-lifecycle` skill. Do not write any SDK code before loading the lifecycle skills.
 
 DataStage batch flows are written as SDK-style Python code and submitted via `update_datastage_flow` (edit an existing flow in place) or `create_datastage_flow` (create a new one). Auth, project context, and persistence are handled automatically.
 

@@ -26,8 +26,8 @@ The gaps are split by what each one does to **routing**, not by what kind of sta
 
 At the source position — there is no upstream for pyflow to build from:
 
-- **Row Generator** — mock or generated rows; pyflow needs real data first
-- **REST as the flow's source** — a REST call feeding the flow
+- **Row Generator stage** — mock or generated rows; pyflow needs real data first
+- **REST stage as the flow's source** — data from a REST API call feeding the flow
 
 Structural — these decide how the flow is shaped or wired:
 
@@ -79,7 +79,6 @@ Data quality stages:
 - Two Source Match
 
 **Spliceable stage features** are not stages at all — they are properties and expressions *on* a stage pyflow already emits. These are the weakest possible reason to leave pyflow: the structure is already right and one measure or derivation needs the SDK.
-
 - **Aggregator measures with no pyflow form** — Corrected Sum of Squares, Missing Values, Missing Values Count, Non-Missing Values Count, Percent Coefficient of Variation, Preserve Type, Range, Standard Deviation, Standard Error, Sum of Weights, Summary, Uncorrected Sum of Squares, Variance, Weighting.
 - **Transformer functions** — any transformer function with no pyflow equivalent. Complex derivation expressions are spliced into the generated SDK once the structure exists.
 - **Connectors** — connector coverage is not fully verified, especially for creating new tables. An unverified connector may need an SDK correction after the pyflow compile; that is a splice, not a reason to skip pyflow.
@@ -114,7 +113,7 @@ Any one of these is enough on its own. A **spliceable** gap is deliberately not 
 - Several structural stages are named at once.
 - There are no data sources upfront — a mock-data flow, which pyflow has nothing to build from.
 - One flow has to produce several file assets.
-- pyflow has already failed five or more times on this same request.
+- Pyflow has already failed five or more times on this same request.
 
 ## Nothing else is selectable
 

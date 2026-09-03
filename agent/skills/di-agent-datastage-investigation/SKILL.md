@@ -300,9 +300,9 @@ and which gap(s) are responsible. Do not guess.
 ## Post Diagnosis - After providing a diagnosis to the user check if there are any follup tasks that may make sense.
 
 - If the investigation involved a job failure
-  - Use `get_job_alert_definitions` to check if any alert definitions are configured for this job:
+  - Use `list_alert_definitions` to check if any alert definitions are configured for this job:
 ```
-get_job_alert_definitions(
+list_alert_definitions(
     project_id=<PROJECT_ID>,
     job_name=<JOB_NAME>
 )
