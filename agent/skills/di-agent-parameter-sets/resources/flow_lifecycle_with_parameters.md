@@ -132,7 +132,7 @@ See [value_sets.md](value_sets.md) for the full value set management workflow.
 
 ## Deleting a Parameter Set
 
-`delete_parameter_set` proactively scans for DataStage flows and connections that reference the set and includes their names in the confirmation message.
+Before deleting, call `get_asset_relationships` (asset_type `"parameter_set"`) to find flows and connections that reference the set. If any are returned, review them and clean up references before proceeding. See the delete sequence in the main skill.
 
 Before confirming deletion:
 

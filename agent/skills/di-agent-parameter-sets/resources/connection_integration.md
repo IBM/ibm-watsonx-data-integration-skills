@@ -108,17 +108,7 @@ A partial mapping is valid — only the listed properties are parameterized; oth
 
 ### 5. Select an environment at job runtime
 
-When running a DataStage job that uses this connection, pass the value set in `runtime_parameters`:
-
-```json
-{
-  "parameter_sets": [
-    { "name": "DBConfig", "value_set": "prod" }
-  ]
-}
-```
-
-If no value set is specified, the parameter default values on the set are used.
+When running a DataStage job that uses this connection, pass the value set in `runtime_parameters`. Relay this to the user in prose rather than a code block — for example: "To use the prod environment, pass `DBConfig` with value set `prod` in the job's runtime parameters." If no value set is specified, the parameter default values on the set are used.
 
 ---
 

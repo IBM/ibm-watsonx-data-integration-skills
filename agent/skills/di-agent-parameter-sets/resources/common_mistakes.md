@@ -30,16 +30,6 @@
 
 ---
 
-## Forgetting to Republish After Attaching
-
-**Mistake:** Calling `attach_parameter_set_to_flow` and then running the job immediately without republishing the flow.
-
-**What happens:** The job uses the last published version of the flow, which does not contain the parameter set reference. Parameters resolve to empty or cause compilation errors.
-
-**Fix:** Always republish the flow (`update_datastage_flow`) after attaching a parameter set. Check the tool result — it includes a `note` reminding you to republish.
-
----
-
 ## Overwriting Parameters with `update_parameter_set`
 
 **Mistake:** Calling `update_parameter_set(parameters=[new_param])` without including existing parameters.
@@ -56,8 +46,8 @@
 
 **What happens:** The API deletes the asset. At runtime, the DataStage compiler cannot resolve the references — the job fails silently or raises a compilation error on the next publish.
 
-**Fix:** `delete_parameter_set` already lists attached flows in its confirmation prompt — read that list rather than deleting blind. To check a specific flow yourself, before deleting:
-1. Call `get_flow_parameter_references(flow_id=..., project_id=...)` on each suspected flow to check whether the set is registered in `external_paramsets`.
+**Fix:** Always call `get_asset_relationships` before `delete_parameter_set` to find referencing flows and connections — the delete tool itself does not scan for them. To also check for stage-expression references in a specific flow:
+1. Call `get_flow_parameter_references(flow_id=..., project_id=...)` to check whether the set is registered in `external_paramsets`.
 2. That covers registration only. If the answer has to be exhaustive, also retrieve each flow via `retrieve_datastage_flow_code` and search stage property strings for `#SetName.ParamName#` — expression references can outlive the registration.
 3. Remove the references from those flows (`update_datastage_flow`).
 4. Then delete the set.
@@ -127,9 +117,9 @@ This holds even when the parameter's default is the correct value — nothing is
 
 **Mistake:** Deleting a parameter set that is still referenced by a connection (i.e. a connection property contains `#setName.paramName#`).
 
-**What happens:** The connection will fail to resolve the property at runtime. The `delete_parameter_set` confirmation prompt lists attached **flows and connections** — read both lists before confirming.
+**What happens:** The connection will fail to resolve the property at runtime.
 
-**Fix:** Before deleting a parameter set, review the attached connections listed in the confirmation message. If any are shown, use `inspect_project_asset(asset_type="connection")` to verify which properties still hold `#setName.*#` references, then update those properties (via the UI connection editor) before confirming the deletion.
+**Fix:** Always call `get_asset_relationships` before `delete_parameter_set` — it returns any flows and connections that reference the set. For each connection returned, use `inspect_project_asset(asset_type="connection")` to verify which properties still hold `#setName.*#` references, then update those properties (via the UI connection editor) before proceeding with deletion.
 
 ---
 

@@ -487,7 +487,7 @@ Operators return `Expr`, not Python bools. Use `&`/`|`/`~`, never `and`/`or`/`no
 
 **Aggregates and window functions must be called on `Expr` objects** (`q.col(...).sum()`, `q.col(...).row_number()`), never on `q` directly or on a Frame. They are only valid inside `.select()`, `.group_by().agg()`, or `.partition_by().select()`.
 
-`.precision(n)` and `.scale(n)` are chainable in any order and apply only to `f64`/`numeric`/`decimal`/`double` columns.
+`.precision(n)` and `.scale(n)` are chainable in any order and apply only to `f64`/`numeric`/`decimal`/`double` columns. If `.precision(n)` is set but `.scale(n)` is omitted, the default scale is **10** when `n > 20`, otherwise **0**.
 
 **They must be placed on the last `.with_columns()` or `.select()` that feeds directly into `q.output()` or `q.write()`.** Annotations placed on any earlier (intermediate) node are ignored — a warning is returned in the `create_pyflow` response when this happens.
 

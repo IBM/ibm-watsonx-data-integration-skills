@@ -32,10 +32,7 @@
 **Symptoms:** The job runs with an unexpected value — not the default, not the value set you intended.
 
 **Check:**
-1. Was a value set specified in `runtime_parameters`? If not, the parameter default applies.
-   ```json
-   { "parameter_sets": [{ "name": "DBConfig", "value_set": "prod" }] }
-   ```
+1. Was a value set specified in `runtime_parameters`? If not, the parameter default applies. Pass the parameter set name and value set name in the job's runtime parameters (e.g. set name `DBConfig`, value set `prod`).
 2. Is the value set name correct? Run `get_parameter_set` to list all value sets and their entries.
 3. Is there a runtime override taking precedence? Check the `local_parameters` key in `runtime_parameters`.
 4. Was the default value on the parameter updated recently but the flow not republished?
