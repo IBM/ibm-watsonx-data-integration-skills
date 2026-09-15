@@ -75,17 +75,7 @@ manage_value_set(
 
 ## Selecting a Value Set at Job Run Time
 
-Pass the value set name in `runtime_parameters` when calling `create_job_run`:
-
-```json
-{
-  "parameter_sets": [
-    { "name": "DBConfig", "value_set": "prod" }
-  ]
-}
-```
-
-To run without a value set (using parameter defaults), omit the `value_set` key entirely.
+Pass the value set name in `runtime_parameters` when calling `create_job_run`. When describing this to the user, relay it in prose rather than as a code block — for example: "To use the prod environment, pass `DB_Config` with value set `prod` in the job's runtime parameters." To run without a value set, omit the value set entirely and parameter defaults apply.
 
 ## Guardrails
 
