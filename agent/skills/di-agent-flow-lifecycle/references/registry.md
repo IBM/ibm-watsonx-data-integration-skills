@@ -9,7 +9,7 @@ There is deliberately no list of supported stages. pyflow is declarative and the
 | | |
 |---|---|
 | Load | `di-agent-flow-pyflow` |
-| Engines | DataStage, StreamSets |
+| Engines | DataStage, Jetstream |
 | Operations | create; edit via `create_pyflow(replace_flow_id=<id>)`, which overwrites in place |
 | Works from | the user's goal, stated declaratively — the compiler picks the stages |
 | Needs | the user's intent, **not** stage expertise; this is why it is the default |

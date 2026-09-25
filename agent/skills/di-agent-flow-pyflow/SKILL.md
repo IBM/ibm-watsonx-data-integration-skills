@@ -27,8 +27,6 @@ The compiler validates your flow and gives detailed compile-time feedback *befor
 
 Re-calling `create_pyflow` without `replace_flow_id` to "redo" an existing flow mints a second asset. Never delete a flow in order to recreate it.
 
-Because an overwrite preserves the existing name, the rename step below applies to fresh creates only.
-
 ### Bootstrap-then-splice mechanics
 
 When pyflow can build the backbone but not the last detail:
@@ -81,26 +79,25 @@ q.output(orders, name="out")
 
 The caller passes the target engine to `create_pyflow(engine=...)`; do not declare it in the code. The engine determines which Frame operations are allowed.
 
-| Op | DataStage | StreamSets |
+| Op | DataStage | Jetstream |
 |---|---|---|
 | `q.source()` / `q.debug_source()` | any count | exactly one |
 | `q.output()` / `q.sink()` / `q.write()` | yes | yes |
-| `.filter()`, `.sort()` | yes | yes |
+| `.filter()`, `.sort()` | yes | no |
 | `.lookup()` | no | yes |
-| `.tumble()` / `.slide().agg()` | no | at most one |
-| `.select()` / `.with_columns()` | yes | yes |
+| `.tumble()` / `.slide().agg()` | no | no |
+| `.select()` / `.with_columns()` | yes | no |
 | `.head()` / `.fetch()`, `.unique()` | yes | no |
 | `.union()`, `.intersect()` | yes | no |
 | `.group_by().agg()` | yes | no |
 | `.join()`, `.cross()` | yes | no |
 
-StreamSets flows must be a single linear chain:
+Jetstream flows must be a single linear chain:
 
 ```
-q.source() | q.debug_source() -> [.filter() | .lookup()]* -> [.tumble()/.slide().agg()]? -> q.output() | q.write() | q.sink()
+q.source() | q.debug_source() -> [.lookup()]* -> q.write()
 ```
-
-StreamSets windowed-agg measures support only `.sum()`.
+Other operations like filter, sink, etc. are under development and not yet supported for Jetstream.
 
 ## Symbols And Bindings
 
@@ -155,7 +152,7 @@ parameters = {
 ```
 
 Rules:
-- `parameters` is **DataStage-only**; passing it with `engine="streamsets"` raises an error.
+- `parameters` is **DataStage-only**; passing it with `engine="jetstream"` raises an error.
 - Every `#token#` that appears in any binding path **must** have a matching key in `parameters`, **unless it is a DataStage macro** (see next section). Missing non-macro entries are rejected at compile time.
 - The default value may be an empty string if no sensible default exists.
 - `parameters` keys that do not appear in any binding path are still registered on the flow and can be used in stage expressions via the SDK.
@@ -234,7 +231,7 @@ create_job_run(
 ```
 
 Rules:
-- Parameter-set tokens (`#setname.paramname#`) are **DataStage-only** — using them with `engine="streamsets"` raises an error.
+- Parameter-set tokens (`#setname.paramname#`) are **DataStage-only** — using them with `engine="jetstream"` raises an error.
 - Both the set name and the parameter name must be valid identifiers (`[A-Za-z_]\w*`). Invalid names are rejected at compile time.
 - The parameter set **must exist** in the project before calling `create_pyflow`. Missing sets or misspelled parameter names are rejected at compile time with a descriptive error listing what is available.
 - **Do not** add parameter-set parameter names to `parameters`. The dotted syntax (`#set.param#`) is how the tool tells them apart from local parameters (`#name#`).
@@ -322,7 +319,7 @@ q.strptime_time(expr, fmt) -> Expr        # string -> temporal; fmt is a strftim
 q.strftime(expr, fmt, tz?) -> Expr        # temporal -> string; tz is an IANA name
 ```
 
-### Sink Operations / Trash Destination Stage Handling Instructions
+### Sink Operations / Trash Destination Stage Handling Instructions `[jetstream]`
 
 The Trash destination is a sink that discards all incoming records. Thus, no schema is required and no data asset needs to be referenced.
 
@@ -338,7 +335,7 @@ q.name("pg_discard")
 q.sink(source_data)
 ```
 
-### Source Schema Metadata `[streamsets]`
+### Source Schema Metadata `[jetstream]`
 
 For Kafka sources on StreamSets, optionally specify schema registry metadata:
 
@@ -585,7 +582,7 @@ a.cross(b, suffix="_right") -> Frame
 - **Columns passed to `left_on=` / `right_on=` must exist in the respective side** — `left_on` must name a column in the left frame; `right_on` must name a column in the right frame. If you get a "column not found" error, verify the column name against the source schema.
 - **Non-equi and range joins** (inequality predicates such as `a.date <= b.date`, date-distance thresholds, or `id != id`) cannot use `.join()`, which is equi-only. Use `.cross()` to produce the Cartesian product, then `.filter()` with the inequality condition.
 
-### Lookup `[streamsets]`
+### Lookup `[jetstream]`
 
 ```python
 m.lookup(symbol, {col: type, ...}, on=, suffix="_right") -> Frame
@@ -598,7 +595,7 @@ m.lookup(symbol, col=type, ..., on=) -> Frame                  # kwargs form
 - Semantics: left-join-like. Unmatched rows are kept with reference columns as NULL. First match only. No `how=`.
 - Key and suffix rules match `.join()` above.
 
-### Windowed Aggregates `[streamsets]`
+### Windowed Aggregates `[jetstream]`
 
 ```python
 m.tumble(length, group_by=?, tz=?, on=?).agg(*measures) -> Frame
@@ -675,22 +672,9 @@ For a computed grouping key, materialize it with `.with_columns()` first, then g
 
 ## Flow Naming
 
-The name passed to `q.name()` is used as the base flow name. To avoid collisions across repeated compilations, `create_pyflow` appends a short random suffix when it creates the flow (e.g. `my_flow` becomes `my_flow_a4bc9z1q`).
+The name passed to `q.name()` is used directly as the flow name. When `replace_flow_id` is set, the target flow keeps its existing name and `q.name()` is ignored.
 
-This applies to **creates only**. When `replace_flow_id` is set, the target flow keeps its existing name and `q.name()` is ignored for naming purposes — no rename is needed afterwards.
-
-**After a fresh create, always call `rename_asset` to set the intended name** — immediately, before any job or run, and even if the flow failed to compile or a later run fails. The suffix makes the create collision-proof; it is not the flow's name, and the suffixed flow is what stays behind in the project either way. Pass the `flow_id` returned by `create_pyflow` and the name you put in `q.name()`:
-
-```
-rename_asset(
-    asset_id   = "<flow_id from create_pyflow>",
-    asset_type = "datastage_flow",   # "streamsets_flow" on StreamSets
-    new_name   = "<the name passed to q.name()>",
-    project_id = "<project_id>",
-)
-```
-
-On a retry, reuse the existing flow via `replace_flow_id` rather than creating a second one to rename.
+On a retry, reuse the existing flow via `replace_flow_id`.
 
 ## Examples
 
@@ -801,7 +785,7 @@ Key points:
 - `q.date_diff(later, earlier)` returns a positive i64 when `later >= earlier`. Swap arguments if the sign is reversed.
 - After `.filter()`, treat the result as a normal frame: `.group_by().agg()`, `.select()`, further `.join()`, etc.
 
-## Stage Configuration `[streamsets]`
+## Stage Configuration `[jetstream]`
 
 Operations support an optional `configs` parameter to pass engine-specific configuration to the underlying stage. Configs are only applied for StreamSets flows; DataStage ignores them.
 

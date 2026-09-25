@@ -17,7 +17,7 @@ Before choosing anything, establish these four things. They are cheap, and every
 
 - **Target flow?** Is there an existing flow this request refers to — an id already in context, or one found via `list_datastage_flows`? This is the create-vs-edit input.
 - **Job running?** Is a run in progress against that flow (`list_job_runs`)? Guard destructive edits; ask before overwriting a flow that is mid-run.
-- **Engine.** `datastage` or `streamsets`.
+- **Engine.** `datastage` or `jetstream`.
 - **Goal.** *What the user is trying to achieve* — not a list of stages. pyflow works from the goal; you do not need stage-level expertise to start.
 
 If the request is read-only (list, preview, retrieve, "what does this flow do"), it is **not** a state. Call the tool and answer.
@@ -65,6 +65,8 @@ Put it in your **final** message. That is the one the user reads; there is no sl
 | **RUN** | the outcome — always — see below |
 | **DIAGNOSE** | the root-cause class and the evidence that picked it |
 | **RECOVER** | which snapshot, and why that one rather than the newest |
+
+**When a run reached a terminal state, close by asking for a session rating.** Any `poll_datastage_job` that came back terminal — success, failure, or error — means the reply that ends your work also asks the user for a 1–10 score and an optional comment, and their answer goes to `rate_us`. Full rule in `references/run.md`; it is skipped entirely in headless runs and never fabricated.
 
 **Report what happened, not only what you decided.** A step that failed is reported as failed. **Never present a flow whose runs all failed as a finished flow, and never offer to run a flow you have already run.** "The flow was created — would you like me to run it?" after three failed runs is the worst reply this lifecycle can produce: every word of it is true and the whole of it is misleading. Say that it ran, that it failed, and what you found.
 
