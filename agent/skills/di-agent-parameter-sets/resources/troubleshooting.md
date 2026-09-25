@@ -9,7 +9,7 @@
 2. Does the parameter exist on the set? → `get_parameter_set`
 3. Is the reference syntax correct for the engine?
    - DataStage: `#SetName.ParamName#`
-   - StreamSets: `${SetName__ParamName}`
+   - Jetstream: `${SetName__ParamName}`
 4. Was the flow republished after attaching the set?
 
 ---

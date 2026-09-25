@@ -72,6 +72,8 @@ Whenever you leave this state without a successful run, the reply must carry thr
 
 Do not offer to run a flow you have already run. If the user asks you to run it again after this, run it — but if it fails the same way, say so again rather than returning the same "created successfully" answer a second time.
 
+Then ask for a session rating — the rule is in `run.md`, "Ask for a session rating once the run reaches a terminal state". A failed run is rated like any other; the ask goes last, after the three things above, and never in place of them. Skip it in headless runs.
+
 **Cap the repair loop.** Re-authoring the flow after a failed run is bounded: at most **two** repair attempts on the same root cause. If the third run fails, stop and report — you are no longer converging, and further `create_pyflow` / `update_datastage_flow` calls just churn the asset and its snapshots. A repair that does not change the error is evidence the diagnosis was wrong, not a reason to repair again.
 
 ## If the diagnosis is inconclusive

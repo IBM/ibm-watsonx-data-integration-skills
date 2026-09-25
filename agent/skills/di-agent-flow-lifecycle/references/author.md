@@ -123,8 +123,8 @@ Say it in product terms — what the *flow* needed. Naming the machinery ("pyflo
 
 Load the skill named in the backend's **Load** row in `registry.md` — the one you **selected**, and only that one — the other is a large reference for a path already ruled out. Step 2 chose; this step executes.
 
-- **pyflow — create:** write the DSL for the user's goal, then `create_pyflow`, then `rename_asset` — a create publishes with a random suffix (`orders_a4bc9z1q`), so it is not finished until the rename lands. Rename before any job or run, and even if the flow failed to compile: the suffixed flow is what stays behind either way. The backend skill has the call signature.
-- **pyflow — edit:** write the DSL for the *whole intended flow* and call `create_pyflow(replace_flow_id=<id>)`. The id and name are preserved, so no rename is needed.
+- **pyflow — create:** write the DSL for the user's goal, then `create_pyflow`. The flow is created with the name passed to `q.name()`.
+- **pyflow — edit:** write the DSL for the *whole intended flow* and call `create_pyflow(replace_flow_id=<id>)`. The id and name are preserved.
 - **pyflow — splice:** author the backbone with Pyflow as above, then immediately proceed to Step 4. The flow is not finished and must not be handed to the user or moved to VALIDATE until the update is successful. Do not stop at the pyflow create, do not report the flow as done, and do not offer to run it.
 - **datastage-sdk — create:** `create_datastage_flow` with the complete SDK body.
 - **datastage-sdk — edit:** see Step 4.

@@ -19,7 +19,7 @@ Use the exact parameter set name and parameter name — both are case-sensitive.
 list_parameter_sets(project_id=...)                    # confirm set name
 attach_parameter_set_to_flow(
     project_id=..., flow_id=...,
-    engine="datastage" | "streamsets",
+    engine="datastage" | "jetstream",
     parameter_set_name=...
 )
 ```
@@ -70,7 +70,7 @@ When the flow runs, `#PROJDEF.DS_HOME#` resolves to the runtime value of the `DS
 
 1. Verify the set has only `string` parameters and the name contains no `__`.
    → [streaming_limitations.md](streaming_limitations.md) for the full checklist.
-2. `attach_parameter_set_to_flow(engine="streamsets", ...)` — injects constants into `pipelineConfig` and saves the attachment immediately.
+2. `attach_parameter_set_to_flow(engine="jetstream", ...)` — injects constants into `pipelineConfig` and saves the attachment immediately.
 3. Edit stage field expressions to use `${setName__paramName}` syntax.
 4. Save or publish subsequent flow edits according to the normal StreamSets workflow.
 
@@ -128,7 +128,7 @@ add_local_parameter(
 )
 ```
 
-- `engine="streamsets"` returns an error immediately — local parameters are batch-only.
+- `engine="jetstream"` returns an error immediately — local parameters are batch-only.
 - If a parameter with the same `name` already exists on the flow it is overwritten (case-sensitive).
 - Returns `{"status": "created"}` for new entries or `{"status": "updated"}` for overwrites.
 - `type` aliases follow the same rules as `create_parameter_set`: `integer` → `int64`, `float` → `sfloat`, `list` → `enum`.
@@ -150,7 +150,7 @@ add_local_parameter(
 get_flow_parameter_references(flow_id=..., project_id=...)
 ```
 
-**DataStage only.** `engine` is optional and defaults to `"datastage"`, so you can omit it. It exists so that an explicit `engine="streamsets"` returns a clear error rather than a confusing API failure — StreamSets flows carry parameter set values as pipeline constants (`<paramset_name>__<param_name>`) in `pipelineConfig.constants`, not as flow registrations.
+**DataStage only.** `engine` is optional and defaults to `"datastage"`, so you can omit it. It exists so that an explicit `engine="jetstream"` returns a clear error rather than a confusing API failure — StreamSets flows carry parameter set values as pipeline constants (`<paramset_name>__<param_name>`) in `pipelineConfig.constants`, not as flow registrations.
 
 Returns the parameter registration state stored directly on the flow:
 

@@ -1,6 +1,6 @@
 # StreamSets Limitations for Parameter Sets
 
-StreamSets (streaming engine) has a significantly smaller parameter set feature surface than DataStage. Some violations are blocked by the tool, while others cause parameters to be skipped or ignored by the engine.
+Jetstream (streaming engine) has a significantly smaller parameter set feature surface than DataStage. Some violations are blocked by the tool, while others cause parameters to be skipped or ignored by the engine.
 
 ## Feature Comparison
 
@@ -48,7 +48,7 @@ A name like `My__Set` would produce ambiguous keys like `${My__Set__DB_HOST}`, m
 
 ## How Attaching Works for StreamSets
 
-`attach_parameter_set_to_flow(engine="streamsets")` injects one pipeline constant per `string` parameter into `pipelineConfig.constants` using the key format `<paramset_name>__<param_name>`. The default value of the parameter becomes the constant's initial value.
+`attach_parameter_set_to_flow(engine="jetstream")` injects one pipeline constant per `string` parameter into `pipelineConfig.constants` using the key format `<paramset_name>__<param_name>`. The default value of the parameter becomes the constant's initial value.
 
 Attaching a parameter set updates the flow immediately. No additional publish or redeploy step is required solely for the attachment. Subsequent flow edits may still require the normal StreamSets save or publish workflow.
 
@@ -56,7 +56,7 @@ Attaching a parameter set updates the flow immediately. No additional publish or
 
 1. Create the parameter set with only `string` parameters — no non-string types.
 2. Confirm the set name contains no `__`.
-3. Call `attach_parameter_set_to_flow(engine="streamsets", ...)`.
+3. Call `attach_parameter_set_to_flow(engine="jetstream", ...)`.
 4. Edit stage field expressions to use `${setName__paramName}` syntax.
 5. Save or publish those later flow edits according to the normal StreamSets workflow.
 
