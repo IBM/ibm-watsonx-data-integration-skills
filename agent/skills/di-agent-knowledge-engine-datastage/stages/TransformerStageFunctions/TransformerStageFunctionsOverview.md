@@ -5,7 +5,7 @@ Use the `discover_transformer_functions` tool to list all available functions or
 
 # Create Transformer Expressions
 
-Always call `validate_transformer_expressions` or `validate_transformer_expressions_from_sdk_code` to validate expressions before finalizing. Call `discover_transformer_functions` to inspect function names, return types, arguments, descriptions, and examples if transformer errors arise. 
+Always call `validate_transformer_expressions` or `validate_transformer_exprs_from_sdk_code` to validate expressions before finalizing. Call `discover_transformer_functions` to inspect function names, return types, arguments, descriptions, and examples if transformer errors arise. 
 
 ## References
 

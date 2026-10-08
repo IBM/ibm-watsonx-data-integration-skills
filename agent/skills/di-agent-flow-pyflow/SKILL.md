@@ -85,7 +85,7 @@ The caller passes the target engine to `create_pyflow(engine=...)`; do not decla
 | `q.output()` / `q.sink()` / `q.write()` | yes | yes |
 | `.filter()`, `.sort()` | yes | no |
 | `.lookup()` | no | yes |
-| `.tumble()` / `.slide().agg()` | no | no |
+| `.tumble()` / `.slide().agg()` | no | yes |
 | `.select()` / `.with_columns()` | yes | no |
 | `.head()` / `.fetch()`, `.unique()` | yes | no |
 | `.union()`, `.intersect()` | yes | no |
@@ -114,7 +114,50 @@ Each binding value is one of:
   {"<symbol>": "<connection_id>:/<SCHEMA>/<TABLE>"}
   ```
 
-Do **not** put column lists in the binding. For database tables the schema comes from your typed `q.source()` declarations; for files it is fetched automatically. As always, declare in `q.source()` only the columns the flow actually uses.
+Do **not** put column lists in the binding. For database tables the schema comes from your typed `q.source()` declarations; for files it is fetched automatically (except Excel — see below). As always, declare in `q.source()` only the columns the flow actually uses.
+
+**File-backed connections** (Azure Blob Storage, S3, COS, SFTP, etc.) use the same `"<connection_id>:<path>"` form, where `path` is the container/bucket and filename:
+- Excel is suppported for reads from Azure Blob Storage, S3, and COS sources only.
+- The file format is inferred automatically from the extension (`.csv`, `.xlsx`, `.xls`, `.xlsm`, `.xlsb`, `.json`, `.parquet`, …). No extra property is needed.
+- To target a **specific worksheet** in an Excel file, append the sheet name as a trailing path segment after the filename:
+
+  ```
+  {"<symbol>": "<connection_id>:/my-container/Report.xlsx/Sheet2"}
+  ```
+
+  Omitting the sheet segment reads the first (default) sheet.
+
+### File source format properties `[datastage]`
+
+For delimited files, `q.source()` accepts the optional kwarg "had_headers" flag, and the Azure Blob Storage source accepts 4 additional properties.
+Set these properties if the user mentions them, or if they are needed to fix runtime errors.
+
+| Kwarg | Accepted values | Default |
+|---|---|---|
+| `has_headers` | `True` / `False` | `True` |
+| `field_delimiter` | `"comma"`, `"tab"`, `"colon"`, or any single custom character | `"comma"` |
+| `quote_character` | `"double_quote"`, `"single_quote"`, or `"none"` | `"none"` |
+| `escape_character` | `"double_quote"`, `"single_quote"`, `"backslash"`, or `"none"` | `"none"` |
+| `row_delimiter` | `"new_line"`, `"carriage_return"`, `"carriage_return_line_feed"`, or `"line_feed"` | `"new_line"` |
+| `character_encoding` | any IANA encoding string, e.g. `"UTF-8"`, `"ISO-8859-1"` | connector default |
+
+```python
+# Example: tab-separated file with UTF-8 encoding
+sales = q.source(
+    "sales_tsv",
+    id="i64",
+    name="string",
+    amount="f64",
+    has_headers=True,
+    row_delimiter="new_line",
+    field_delimiter="comma",
+    quote_character="none",
+    escape_character="backslash",
+    character_encoding="utf-8",
+)
+q.name("azure_tsv_ingest")
+q.write(sales, "sales_output", operation="overwrite")
+```
 
 ### Resolving a binding — prefer data assets
 
@@ -603,10 +646,14 @@ m.slide(length, group_by=?, tz=?, on=?).agg(*measures) -> Frame
 ```
 
 - `length`: `<number><unit>` where unit is `s` | `m` | `h` | `d` (e.g. `"30s"`, `"15m"`, `"1h"`).
-- `group_by`: str or list of column names; omit for one global row per window.
-- `tz`: IANA timezone. `on`: event-time column; omit to use processing time.
+- `group_by`: str or list of column names (REQUIRED for Jetstream). For a global window, add a constant column (e.g., `q.cast(1, "i32").alias("_global")`) and group by it.
+- `tz`: IANA timezone.
+- `on`: event-time column (REQUIRED for Jetstream). Must be a field in your data containing event timestamps as Unix milliseconds (use `i64` type, not `timestamp`).
 - Output columns: `[*group_by, window_start, window_end, *measure_aliases]`; `window_start` / `window_end` are `timestamp`.
 - Measures: the initial StreamSets windowing compiler supports only `.sum()`. Each measure must be `.alias()`'d; no nesting.
+
+**Important:** Jetstream windowing requires event-time processing. You must specify the `on` parameter with a field name that contains timestamps as Unix milliseconds (Long values). Processing-time windows are not supported.
+The pyflow compiler automatically propagates the `on` field to the source stage. Do NOT pass `watermarkStrategy` or `timestampRecordField` via `configs={}` on the source; they are reserved keys managed by the compiler and will be rejected with an error.
 
 ### Partitioning `[datastage]`
 
@@ -726,7 +773,7 @@ q.output(
 StreamSets windowed aggregate on an event-time column:
 
 ```python
-events = q.source("events", {"region": "string", "amount": "f64", "ts": "timestamp"})
+events = q.source("events", {"region": "string", "amount": "f64", "ts": "i64"})  # ts as Unix milliseconds
 q.name("revenue_15m")
 q.output(
     events
@@ -777,6 +824,24 @@ q.output(
     .agg(q.col("amount_c").sum().alias("rolling_sum")),
     name="rolling_output"
 )
+```
+
+DataStage Azure Blob Storage file read with delimiter property configuration `[datastage]`:
+```python
+sales = q.source(
+    "sales_tsv",
+    id="i64",
+    name="string",
+    amount="f64",
+    has_headers=True,
+    row_delimiter="new_line",
+    field_delimiter="comma",
+    quote_character="none",
+    escape_character="backslash",
+    character_encoding="utf-8",
+)
+q.name("azure_tsv_ingest")
+q.write(sales, "sales_output", operation="overwrite")
 ```
 
 Key points:
@@ -839,11 +904,11 @@ enriched = orders.lookup(
     configs={"cacheSize": 10000, "cacheTTL": 3600}
 )
 
-# Window with custom watermark
+# Window with custom watermark (ts must be i64 Unix milliseconds)
 windowed = events.tumble(
     "15m",
     group_by="region",
-    on="ts",
+    on="ts",  # ts field must contain Unix milliseconds
     configs={"allowedLateness": "5m"}
 ).agg(q.col("amount").sum().alias("revenue"))
 ```

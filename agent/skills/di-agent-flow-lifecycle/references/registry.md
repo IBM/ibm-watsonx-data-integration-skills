@@ -36,7 +36,7 @@ Structural — these decide how the flow is shaped or wired:
 - **DataStage components** — shared reusable components: referenced, not authored
 - **Flow-level connections** — pyflow binds per source; it has no flow-scoped connection model
 
-**Spliceable — pyflow builds the backbone fine and the gap is local.** One stage hung off the flow, or a property or expression on a stage that already exists. This is the common case and it is **not** an escalation: author in pyflow, then splice via `retrieve_datastage_flow_code` → `update_datastage_flow`. See `author.md` Step 2, outcome (b).
+**Spliceable — pyflow builds the backbone fine and the gap is local.** One stage hung off the flow, or a property or expression on a stage that already exists. This is the common case and it is **not** an escalation: author in pyflow, then splice via `retrieve_datastage_flow_code` → `update_datastage_flow`. See `author.md` Step 2, outcome (b). Do not use the datastage SDK code path for delimited properties `field_delimiter`, `row_delimiter`, `quote_character`, and `escape_character` on Azure Blob Storage -- Pyflow supports these properties.
 
 Processing stages, which hang off a backbone pyflow builds:
 
