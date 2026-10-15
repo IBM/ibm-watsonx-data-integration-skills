@@ -8,7 +8,7 @@ DataStage batch SDK reference — method signatures, call patterns, conventions.
 
 Before writing ANY code that includes a stage, you MUST read its corresponding stage skill file.
 
-Stage skill files are located at: `subprojects/app/python/src/de_agent/de_agent/skills/di-agent-knowledge-engine-datastage/stages/<UserFriendlyStageName>Stage.md`. For example, if the flow contains a change apply stage, you must read `subprojects/app/python/src/de_agent/de_agent/skills/di-agent-knowledge-engine-datastage/stages/ChangeApplyStage.md`
+Stage skill files are located in the `di-agent-knowledge-engine-datastage` skill at: `stages/<UserFriendlyStageName>Stage.md`. For example, if the flow contains a change apply stage, you must read `di-agent-knowledge-engine-datastage/stages/ChangeApplyStage.md`
 
 Do not write any code without first reading the corresponding stage skill files. The link cardinality rules in those files must be followed.
 

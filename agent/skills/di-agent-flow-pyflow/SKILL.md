@@ -49,6 +49,11 @@ There is deliberately no list of what pyflow *supports*. pyflow is declarative �
 - **Only expressions or properties on existing structure**, no new wiring -> edit the retrieved SDK in place.
 - **The core shape has no faithful pyflow form**, so a bootstrap would yield a scaffold you'd have to *rewire* rather than add to -> bootstrap the closest shape pyflow can produce, then reshape the generated SDK via `update_datastage_flow`. A missing stage alone never qualifies as "no pyflow form", since stages splice in after (above).
 
+
+## Streamsets / Jetstream engine instructions: `di-agent-flow-pyflow-streamsets`
+
+The primary engine for pyflow is DataStage. This document describes using pyflow for this purpose. If you want to author a flow that uses the Streamsets (Jetstream) engine, read the auxiliary skill `di-agent-flow-pyflow-streamsets` as well, which describes Streamsets-specific features and differences of the pyflow language when authoring for that engine. If that auxiliary skill is not present, the Streamsets/Jetstream engine may not be enabled.
+
 ## Code Anatomy
 
 The runtime provides `q`; do not import or instantiate. Every flow:
@@ -79,25 +84,15 @@ q.output(orders, name="out")
 
 The caller passes the target engine to `create_pyflow(engine=...)`; do not declare it in the code. The engine determines which Frame operations are allowed.
 
-| Op | DataStage | Jetstream |
-|---|---|---|
-| `q.source()` / `q.debug_source()` | any count | exactly one |
-| `q.output()` / `q.sink()` / `q.write()` | yes | yes |
-| `.filter()`, `.sort()` | yes | no |
-| `.lookup()` | no | yes |
-| `.tumble()` / `.slide().agg()` | no | yes |
-| `.select()` / `.with_columns()` | yes | no |
-| `.head()` / `.fetch()`, `.unique()` | yes | no |
-| `.union()`, `.intersect()` | yes | no |
-| `.group_by().agg()` | yes | no |
-| `.join()`, `.cross()` | yes | no |
-
-Jetstream flows must be a single linear chain:
-
-```
-q.source() | q.debug_source() -> [.lookup()]* -> q.write()
-```
-Other operations like filter, sink, etc. are under development and not yet supported for Jetstream.
+operations allowed for DataStage:
+- `q.source()` (and can have multiple per flow)
+- `q.output()` / `q.sink()` / `q.write()`
+- `.filter()`, `.sort()`
+- `.select()` / `.with_columns()`
+- `.head()` / `.fetch()`, `.unique()`
+- `.union()`, `.intersect()`
+- `.group_by().agg()`
+- `.join()`, `.cross()`
 
 ## Symbols And Bindings
 
@@ -195,7 +190,7 @@ parameters = {
 ```
 
 Rules:
-- `parameters` is **DataStage-only**; passing it with `engine="jetstream"` raises an error.
+- `parameters` is **DataStage-only**; passing it with `engine=` set to anything else raises an error.
 - Every `#token#` that appears in any binding path **must** have a matching key in `parameters`, **unless it is a DataStage macro** (see next section). Missing non-macro entries are rejected at compile time.
 - The default value may be an empty string if no sensible default exists.
 - `parameters` keys that do not appear in any binding path are still registered on the flow and can be used in stage expressions via the SDK.
@@ -274,7 +269,7 @@ create_job_run(
 ```
 
 Rules:
-- Parameter-set tokens (`#setname.paramname#`) are **DataStage-only** — using them with `engine="jetstream"` raises an error.
+- Parameter-set tokens (`#setname.paramname#`) are **DataStage-only** — using them with `engine=` set to anything else raises an error.
 - Both the set name and the parameter name must be valid identifiers (`[A-Za-z_]\w*`). Invalid names are rejected at compile time.
 - The parameter set **must exist** in the project before calling `create_pyflow`. Missing sets or misspelled parameter names are rejected at compile time with a descriptive error listing what is available.
 - **Do not** add parameter-set parameter names to `parameters`. The dotted syntax (`#set.param#`) is how the tool tells them apart from local parameters (`#name#`).
@@ -323,7 +318,7 @@ parameters = {
 | `#DSJobController#` | Hostname of the job controller process |
 
 Rules:
-- Macros are **DataStage-only** — they have no meaning on StreamSets.
+- Macros are **DataStage-only** — they have no meaning in any other engines.
 - Do **not** declare macro names in `parameters`. The validator will accept them without a declaration and will raise an error if you try to declare one (it would be ignored at runtime anyway).
 - Macros can be combined with local-parameter tokens in the same path, e.g. `"conn-id:/#DSProjectName#/#src_table#"`.
 - Macro names are **case-sensitive** — use the exact capitalisation shown in the table above.
@@ -346,8 +341,6 @@ Python literals auto-convert: `int -> i64`, `float -> f64`, `str -> string`, `bo
 ```python
 q.source(symbol, {"col": "type", ...}) -> Frame   # dict form; supports names with spaces/punctuation; at least one column must be provided
 q.source(symbol, col="type", ...) -> Frame         # kwargs form; identifier-safe names; at least one column must be provided
-q.source(symbol, col="type", ..., schema_metadata={...}) -> Frame  # with schema metadata (Kafka/StreamSets)
-q.debug_source()                          # debug source stage for development: Dev Raw Data Source
 q.name(name)                              # flow name; snake_case; exactly once — see Flow Naming below
 q.output(frame, name)                     # register final output; required name; no other kwargs accepted
 q.sink()                                  # register destination stage to discard incoming records
@@ -361,75 +354,6 @@ q.date_diff(d1, d2) -> Expr               # day difference as i64 — note: date
 q.strptime_time(expr, fmt) -> Expr        # string -> temporal; fmt is a strftime-style format
 q.strftime(expr, fmt, tz?) -> Expr        # temporal -> string; tz is an IANA name
 ```
-
-### Sink Operations / Trash Destination Stage Handling Instructions `[jetstream]`
-
-The Trash destination is a sink that discards all incoming records. Thus, no schema is required and no data asset needs to be referenced.
-
-Pyflow Code - for example:
-
-```python
-source_data = q.source("pg_table", {"id":"i32", "name": "string"})
-
-# Name the flow
-q.name("pg_discard")
-
-# Sink to Trash
-q.sink(source_data)
-```
-
-### Source Schema Metadata `[jetstream]`
-
-For Kafka sources on StreamSets, optionally specify schema registry metadata:
-
-```python
-q.source(symbol, col="type", ..., schema_metadata={"subject": "...", "format": "..."})
-```
-
-**Parameters:**
-- `schema_metadata`: Optional dict with schema registry information:
-  - `"subject"`: Schema registry subject name (only used when format is AVRO; defaults to `{symbol}-value`)
-  - `"format"`: Data serialization format - `"AVRO"`, `"JSON"`, or `"PROTOBUF"` (defaults to `"AVRO"`)
-
-**Behavior:**
-- **No schema registry lookups are performed.** All values are either explicitly provided or use defaults.
-- **`schema_subject` is only used when format is AVRO.** For JSON/PROTOBUF, the subject is ignored.
-- If `schema_metadata` is not provided: format defaults to `"AVRO"`, subject defaults to `{topic}-value`
-- If only `"subject"` is provided: format defaults to `"AVRO"`, subject is used
-- If only `"format"` is provided: format is used; if AVRO, subject defaults to `{topic}-value`
-
-**Examples:**
-
-```python
-# AVRO with custom subject (subject is used)
-orders = q.source("orders",
-                  order_id="i64",
-                  amount="f64",
-                  schema_metadata={
-                      "subject": "orders-value-v2",
-                      "format": "AVRO"
-                  })
-
-# JSON format (subject is ignored even if provided)
-orders = q.source("orders",
-                  order_id="i64",
-                  amount="f64",
-                  schema_metadata={"format": "JSON"})
-
-# Subject only (format defaults to AVRO, subject is used)
-orders = q.source("orders",
-                  order_id="i64",
-                  amount="f64",
-                  schema_metadata={"subject": "orders-value-v2"})
-
-# No metadata (format defaults to AVRO, subject defaults to "orders-value")
-orders = q.source("orders", order_id="i64", amount="f64")
-```
-
-**Use Cases:**
-- Network policies prevent schema registry access during compilation
-- Custom AVRO schema subject naming that doesn't follow `{topic}-value` convention
-- Explicit control over data formats (AVRO, JSON, PROTOBUF)
 
 ### Output Operations
 
@@ -605,7 +529,7 @@ String methods are accessed via `.str.<method>()`, **not directly on the column 
 
 **Aggregates** may appear only in `.select()` or `.group_by().agg()`. To filter on an aggregated value, aggregate first, then `.filter(...)`.
 
-**No analytic window-over functions.** Use `.tumble()` / `.slide()` for time-windowed aggregates on StreamSets. For DataStage window functions, see Partitioning section below.
+**No analytic window-over functions.** For DataStage window functions, see Partitioning section below.
 
 **Rolling / range-window aggregates on DataStage** (e.g. "sum of contributions within the last 27 days of each anchor row") are not a built-in operation. Express them as `.cross()` → `.filter(q.date_diff(...) <= N)` → `.group_by().agg()`. See the recipe in the Examples section.
 
@@ -624,36 +548,6 @@ a.cross(b, suffix="_right") -> Frame
 - **`join()` takes exactly one positional argument (the right frame) plus keyword arguments.** `a.join(b, q.col("id") == q.col("id2"))` is wrong. Pass the join condition via `on=`, `left_on=`, or `right_on=`. If the key columns have different names, use `left_on="id", right_on="id2"`.
 - **Columns passed to `left_on=` / `right_on=` must exist in the respective side** — `left_on` must name a column in the left frame; `right_on` must name a column in the right frame. If you get a "column not found" error, verify the column name against the source schema.
 - **Non-equi and range joins** (inequality predicates such as `a.date <= b.date`, date-distance thresholds, or `id != id`) cannot use `.join()`, which is equi-only. Use `.cross()` to produce the Cartesian product, then `.filter()` with the inequality condition.
-
-### Lookup `[jetstream]`
-
-```python
-m.lookup(symbol, {col: type, ...}, on=, suffix="_right") -> Frame
-m.lookup(symbol, {col: type, ...}, left_on=, right_on=, suffix="_right") -> Frame
-m.lookup(symbol, col=type, ..., on=) -> Frame                  # kwargs form
-```
-
-- Enriches `m` with columns read inline from the reference symbol. Do **not** declare the reference via a separate `q.source()`.
-- Reference columns are the reference stage's full schema: include `on=` / `right_on=` key columns plus columns to pull through.
-- Semantics: left-join-like. Unmatched rows are kept with reference columns as NULL. First match only. No `how=`.
-- Key and suffix rules match `.join()` above.
-
-### Windowed Aggregates `[jetstream]`
-
-```python
-m.tumble(length, group_by=?, tz=?, on=?).agg(*measures) -> Frame
-m.slide(length, group_by=?, tz=?, on=?).agg(*measures) -> Frame
-```
-
-- `length`: `<number><unit>` where unit is `s` | `m` | `h` | `d` (e.g. `"30s"`, `"15m"`, `"1h"`).
-- `group_by`: str or list of column names (REQUIRED for Jetstream). For a global window, add a constant column (e.g., `q.cast(1, "i32").alias("_global")`) and group by it.
-- `tz`: IANA timezone.
-- `on`: event-time column (REQUIRED for Jetstream). Must be a field in your data containing event timestamps as Unix milliseconds (use `i64` type, not `timestamp`).
-- Output columns: `[*group_by, window_start, window_end, *measure_aliases]`; `window_start` / `window_end` are `timestamp`.
-- Measures: the initial StreamSets windowing compiler supports only `.sum()`. Each measure must be `.alias()`'d; no nesting.
-
-**Important:** Jetstream windowing requires event-time processing. You must specify the `on` parameter with a field name that contains timestamps as Unix milliseconds (Long values). Processing-time windows are not supported.
-The pyflow compiler automatically propagates the `on` field to the source stage. Do NOT pass `watermarkStrategy` or `timestampRecordField` via `configs={}` on the source; they are reserved keys managed by the compiler and will be rejected with an error.
 
 ### Partitioning `[datastage]`
 
@@ -757,32 +651,6 @@ q.output(
 )
 ```
 
-StreamSets lookup; reference schema is declared inline, not via a separate `q.source()`:
-
-```python
-orders = q.source("orders", {"cust_id": "i64", "amount": "f64"})
-q.name("orders_with_customer")
-q.output(
-    orders
-    .filter(q.col("amount") > 0)
-    .lookup("customer", {"cust_id": "i64", "name": "string"}, on="cust_id"),
-    name="orders_with_customer_output"
-)
-```
-
-StreamSets windowed aggregate on an event-time column:
-
-```python
-events = q.source("events", {"region": "string", "amount": "f64", "ts": "i64"})  # ts as Unix milliseconds
-q.name("revenue_15m")
-q.output(
-    events
-    .tumble("15m", group_by="region", on="ts")
-    .agg(q.col("amount").sum().alias("revenue")),
-    name="revenue_output"
-)
-```
-
 DataStage window functions with partitioning:
 
 ```python
@@ -849,66 +717,3 @@ Key points:
 - Put the equi-predicate (`id == anchor_id`) first inside `.filter()` so the engine discards non-matching pairs before evaluating the range condition.
 - `q.date_diff(later, earlier)` returns a positive i64 when `later >= earlier`. Swap arguments if the sign is reversed.
 - After `.filter()`, treat the result as a normal frame: `.group_by().agg()`, `.select()`, further `.join()`, etc.
-
-## Stage Configuration `[jetstream]`
-
-Operations support an optional `configs` parameter to pass engine-specific configuration to the underlying stage. Configs are only applied for StreamSets flows; DataStage ignores them.
-
-```python
-q.source(symbol, col="type", ..., configs={"key": "value"})
-q.debug_source(configs={"key": "value"})
-q.write(frame, symbol, operation="insert", configs={"key": "value"})
-frame.filter(expr, configs={"key": "value"})
-frame.select(..., configs={"key": "value"})
-frame.with_columns(..., configs={"key": "value"})
-frame.sort(..., configs={"key": "value"})
-frame.lookup(symbol, {...}, on=, configs={"key": "value"})
-frame.tumble(length, configs={"key": "value"}).agg(...)
-frame.slide(length, configs={"key": "value"}).agg(...)
-```
-
-**Rules:**
-- `configs` must be a dict with string keys and JSON-serializable values (str, int, float, bool, None, list, dict)
-- Reserved keys cannot be used: `stageType`, `instanceName`, `stageName`, `uiInfo`, `inputLanes`, `outputLanes`, `eventLanes`, `services`, `configuration`
-- Configs are merged into the StreamSets stage configuration after standard properties are set
-- Invalid configs raise `ConfigValidationError` during compilation
-
-**Examples:**
-
-```python
-# Source with batch size config
-orders = q.source("orders_kafka",
-                  order_id="i64",
-                  amount="f64",
-                  configs={"batchSize": 1000, "maxWaitTime": 5000})
-
-# Debug source with rawData and dataFormat config
-orders = q.debug_source(configs={"rawData":"id,total\n1,1.1\n2,2.2", "dataFormat":"CSV"})
-
-# Write with custom buffer settings
-q.write(result, "target_db",
-        operation="insert",
-        configs={"batchSize": 500, "connectionTimeout": 30})
-
-# Filter with processing hints
-filtered = orders.filter(
-    q.col("amount") > 100,
-    configs={"enableMetrics": True}
-)
-
-# Lookup with cache configuration
-enriched = orders.lookup(
-    "customers",
-    {"cust_id": "i64", "name": "string"},
-    on="cust_id",
-    configs={"cacheSize": 10000, "cacheTTL": 3600}
-)
-
-# Window with custom watermark (ts must be i64 Unix milliseconds)
-windowed = events.tumble(
-    "15m",
-    group_by="region",
-    on="ts",  # ts field must contain Unix milliseconds
-    configs={"allowedLateness": "5m"}
-).agg(q.col("amount").sum().alias("revenue"))
-```
